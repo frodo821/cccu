@@ -126,6 +126,15 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       inputSchema: { target: z.string().optional().describe('"tab:<id>" or "new"'), url: z.string().describe('URL, or "back" / "forward"') } },
     ({ target, url }) => run(async () => text(await ctx.browser.navigate(target, url))));
 
+  server.registerTool("cu_screenshot",
+    { description: "Screenshot of a target (window, app's main window, or tab) as an image. Supplementary: prefer cu_snapshot for reading UI; use this to check visual state. Desktop capture needs Screen Recording permission.",
+      inputSchema: { target: targetArg.optional().describe("Omit for the main display (desktop)"), maxWidth: z.number().int().optional().describe("Downscale to this width (default 1600, desktop only)") } },
+    ({ target, maxWidth }) => run(async () => {
+      const b = target ? byTarget(target) : ctx.backends[0];
+      const r = await b.screenshot(target ?? "", { maxWidth });
+      return { content: [{ type: "image", data: r.pngBase64, mimeType: "image/png" } as any, { type: "text", text: `${r.width ?? "?"}x${r.height ?? "?"} png` }] };
+    }));
+
   server.registerTool("cu_status",
     { description: "Backend status: helper protocol version and Accessibility trust, Chrome DevTools reachability.", inputSchema: {} },
     () => run(async () => {

@@ -129,6 +129,11 @@ describe.skipIf(!haveChrome)("BrowserBackend", () => {
     expect((await backend.snapshot(tab)).text).toContain("Sign up");
   });
 
+  test("screenshot returns a PNG", async () => {
+    const r = await backend.screenshot(tab);
+    expect(Buffer.from(r.pngBase64, "base64").subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  });
+
   test("unknown snapshot id", async () => {
     await expect(backend.click({ snapshot: "b999", ref: "e1" }, {})).rejects.toMatchObject({ kind: "STALE_REF" });
   });

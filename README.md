@@ -42,7 +42,8 @@ printf '%s\n' '{"id":1,"method":"sys.hello","params":{}}' '{"id":2,"method":"app
 
 - macOS desktop: snapshot, find, click, type, keys, scroll, set value, wait — done (milestone 2)
 - Chrome via CDP: tabs, navigate, snapshot, find, click, type, keys, set value, wait — done (milestone 3)
-- Screenshot, iframes/OOPIF in browser snapshots: not yet
+- Screenshot (`cu_screenshot`): windows, apps, display, tabs — done (desktop needs Screen Recording permission)
+- iframes/OOPIF in browser snapshots: not yet
 
 ## Browser setup
 

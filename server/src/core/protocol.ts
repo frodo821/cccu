@@ -77,8 +77,8 @@ export interface Methods {
     result: Record<string, never>;
   };
   "screen.capture": {
-    params: { pid?: number; windowNumber?: number; display?: number };
-    result: { pngBase64: string; scale: number; frame: Rect };
+    params: { pid?: number; windowNumber?: number; display?: number; maxWidth?: number };
+    result: { pngBase64: string; scale: number; frame: Rect; width: number; height: number };
   };
 }
 export type MethodName = keyof Methods;

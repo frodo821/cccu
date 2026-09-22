@@ -345,6 +345,12 @@ export class BrowserBackend implements Backend {
     }
   }
 
+  async screenshot(target: string, _opts: { maxWidth?: number } = {}) {
+    const s = await this.session(this.targetIdOf(target));
+    const { data } = await this.send(s, "Page.captureScreenshot", { format: "png" });
+    return { pngBase64: data };
+  }
+
   async dispose(): Promise<void> {
     this.conn?.close();
     this.conn = null;

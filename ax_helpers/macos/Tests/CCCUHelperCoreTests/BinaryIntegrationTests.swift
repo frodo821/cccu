@@ -54,7 +54,7 @@ final class BinaryIntegrationTests: XCTestCase {
         let hello = try readLine()
         XCTAssertEqual(hello["id"] as? Int, 1)
         let res = hello["result"] as! [String: Any]
-        XCTAssertEqual(res["protocolVersion"] as? String, "1.0")
+        XCTAssertTrue((res["protocolVersion"] as? String)?.hasPrefix("1.") == true)
         XCTAssertTrue((res["capabilities"] as! [String]).contains("app.list"))
 
         send(#"{"jsonrpc":"2.0","id":2,"method":"app.list","params":{}}"#)

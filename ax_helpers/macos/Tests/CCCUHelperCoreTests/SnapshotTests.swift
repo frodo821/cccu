@@ -60,12 +60,37 @@ final class SnapshotTests: XCTestCase {
         XCTAssertNoThrow(try Params(raw: ["query": ["role": "button"] as JSONObject]).findQuery())
     }
 
+    func testScreenCaptureReturnsPNGOrPermissionError() {
+        let d = makeDispatcher(shutdown: {})
+        switch d.handle(Request(json: ["id": 1, "method": "screen.capture", "params": ["maxWidth": 200]])!) {
+        case .result(_, let v):
+            let o = v as! JSONObject
+            let data = Data(base64Encoded: o["pngBase64"] as! String)!
+            XCTAssertEqual([UInt8](data.prefix(4)), [0x89, 0x50, 0x4E, 0x47])   // PNG シグネチャ
+            XCTAssertLessThanOrEqual(o["width"] as! Int, 200)
+        case .error(_, let e):
+            XCTAssertEqual(e.kind, .notTrusted)   // Screen Recording 未許可の環境
+            XCTAssertEqual(e.data["permission"] as? String, "screenRecording")
+        case .notification: XCTFail()
+        }
+    }
+
+    func testDownscaleKeepsAspect() {
+        let ctx = CGContext(data: nil, width: 400, height: 100, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let img = ctx.makeImage()!
+        let small = downscale(img, maxWidth: 100)
+        XCTAssertEqual(small.width, 100); XCTAssertEqual(small.height, 25)
+        XCTAssertEqual(downscale(img, maxWidth: 1000).width, 400)
+        XCTAssertNotNil(pngData(small))
+    }
+
     func testCapabilitiesCoverProtocolV1() {
         let d = makeDispatcher(shutdown: {})
         let expected = [
             "sys.hello", "sys.requestTrust", "sys.shutdown", "app.list", "app.activate", "window.list", "window.raise",
             "ui.snapshot", "ui.find", "ui.attributes", "ui.setAttribute", "ui.performAction", "ui.click", "ui.focus", "ui.waitFor",
-            "input.type", "input.key", "input.scroll", "input.mouse",
+            "input.type", "input.key", "input.scroll", "input.mouse", "screen.capture",
         ]
         for m in expected { XCTAssertTrue(d.capabilities.contains(m), "missing \(m)") }
     }

@@ -1,4 +1,4 @@
-# cccu helper protocol v1.0
+# cccu helper protocol v1.1
 
 MCP サーバー (クライアント) と OS 別アクセシビリティヘルパー (サーバー) の間の契約。
 `ax_helpers/*` の実装はすべてこの文書に従う。設計背景は `DESIGN.md` §4。
@@ -104,7 +104,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 | method | params | result |
 |--------|--------|--------|
-| `screen.capture` | `{pid?: int, windowNumber?: int, display?: int}` | `{pngBase64: string, scale: number, frame: Rect}` |
+| `screen.capture` | `{pid?: int, windowNumber?: int, display?: int, maxWidth?: int}` | `{pngBase64: string, scale: number, frame: Rect, width: int, height: int}` — `pid` のみならメインウィンドウ、どちらも無ければメインディスプレイ。`maxWidth` (既定 1600) に縮小。Screen Recording 未許可なら `NOT_TRUSTED` + `data.permission = "screenRecording"` (v1.1) |
 
 ## 6. スナップショット記法
 
@@ -132,6 +132,11 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - ref 使用時、要素の生存確認に失敗したら `STALE_REF`
 - スナップショットを跨いだ同一性は保証しない
 
-## 8. 通知 (予約、v1.1 以降)
+## 8. 通知 (予約、v1.2 以降)
 
-`ax.event` `{pid, notification: string, ref?: Ref}` — 購読 API (`ui.observe`) と併せて追加予定。v1.0 のクライアントは未知の通知を無視しなければならない。
+`ax.event` `{pid, notification: string, ref?: Ref}` — 購読 API (`ui.observe`) と併せて追加予定。クライアントは未知の通知を無視しなければならない。
+
+## 9. 変更履歴
+
+- 1.1: `screen.capture` 実装、`maxWidth` / `width` / `height` 追加
+- 1.0: 初版

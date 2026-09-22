@@ -85,5 +85,13 @@ export class DesktopBackend implements Backend {
   async action(ref: Ref, action: string): Promise<void> {
     await (await this.helper()).call("ui.performAction", { ref, action });
   }
+  async screenshot(target: string, opts: { maxWidth?: number } = {}) {
+    const h = await this.helper();
+    if (!h.has("screen.capture")) throw new HelperError("UNSUPPORTED", "helper does not support screen.capture (rebuild ax_helpers/macos)");
+    const t = await this.resolveTarget(target);
+    const params = t.kind === "window" ? { pid: t.pid, windowNumber: t.windowNumber } : t.kind === "app" ? { pid: t.pid } : {};
+    const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth });
+    return { pngBase64: r.pngBase64, width: r.width, height: r.height };
+  }
   async dispose(): Promise<void> { await this.client?.stop(); this.client = null; }
 }

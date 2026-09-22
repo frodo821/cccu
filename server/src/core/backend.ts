@@ -34,6 +34,8 @@ export interface Backend {
   focus(ref: Ref): Promise<void>;
   attributes(ref: Ref, names?: string[]): Promise<Record<string, unknown>>;
   action(ref: Ref, action: string): Promise<void>;
+  /** PNG スクリーンショット (補助情報)。desktop は Screen Recording 権限が要る */
+  screenshot(target: string, opts?: { maxWidth?: number }): Promise<{ pngBase64: string; width?: number; height?: number }>;
 
   dispose(): Promise<void>;
 }

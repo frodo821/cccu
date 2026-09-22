@@ -250,8 +250,9 @@ cccu/
 1. ✅ **Protocol first**: `docs/PROTOCOL.md` と Swift 側 `Protocol/` (型 + ディスパッチ + `sys.hello`) + TS 側クライアント。`sys.hello` / `app.list` が往復するところまで
 2. ✅ Desktop: `ui.snapshot` → `ui.click` → `input.type` → `ui.find` の順で実装。TextEdit で「新規書類を開いて文字を打つ」を通す (`make e2e`)
 3. ✅ Browser: CDP 接続 → snapshot → click/type。フィクスチャページでフォーム入力・送信・遷移・STALE_REF を `bun test` で検証
-4. MCP ツール層 + SKILL.md + plugin.json、`claude --plugin-dir` で動作確認
-5. `ui.waitFor`、screenshot、ヘルパーのビルド配布 (プラグインインストール時に `swift build`)
+4. ✅ MCP ツール層 + SKILL.md + plugin.json、`claude --plugin-dir` で動作確認 (`claude -p --plugin-dir .` で cu_status / cu_targets 呼び出しを確認)
+5. ✅ `ui.waitFor`、screenshot、ヘルパーのビルド配布 (`bin/cccu-server` が初回起動時に `swift build` / `bun build` する)
+6. 今後: iframe / OOPIF のスナップショット、AXObserver 通知 (`ax.event`)、Windows (UIA) / Linux (AT-SPI) ヘルパー
 
 ## 9. 既知の制約・前提
 

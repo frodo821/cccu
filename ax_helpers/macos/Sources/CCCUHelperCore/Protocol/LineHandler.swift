@@ -23,5 +23,6 @@ public func makeDispatcher(shutdown: @escaping () -> Void) -> Dispatcher {
     registerWindowMethods(d)
     registerUIMethods(d)
     registerInputMethods(d)
+    registerScreenMethods(d)
     return d
 }
