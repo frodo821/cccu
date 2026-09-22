@@ -1,4 +1,4 @@
-# cccu helper protocol v1.2
+# cccu helper protocol v1.3
 
 MCP サーバー (クライアント) と OS 別アクセシビリティヘルパー (サーバー) の間の契約。
 `ax_helpers/*` の実装はすべてこの文書に従う。設計背景は `DESIGN.md` §4。
@@ -102,7 +102,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 | method | params | result |
 |--------|--------|--------|
-| `input.type` | `{ref?: Ref, text: string, clear?: boolean, submit?: boolean}` | `{method: "selectedText"\|"value"\|"keys"}` — ref 省略時はフォーカス中の要素。AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順に試す |
+| `input.type` | `{ref?: Ref, text: string, clear?: boolean, submit?: boolean, method?: "auto"\|"keys"\|"ax"}` | `{method: string}` — ref 省略時はフォーカス中の要素。`auto` は AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順。`submit` 時の既定は `keys` (AX で挿入した文字列は Chrome のアドレスバーなどで「ユーザー入力」扱いにならず Enter が効かないため)。打鍵が落ちたら AX で入れ直す (v1.3) |
 | `input.key` | `{key: string, modifiers?: Modifier[], pid?: int}` | `{}` — `key` は W3C `KeyboardEvent.key` 名。`pid` 指定時はそのアプリを前面にしてから送る |
 | `input.scroll` | `{ref?: Ref, point?: Point, dx: number, dy: number}` | `{}` |
 | `input.mouse` | `{point: Point, action: "move"\|"down"\|"up"\|"drag", to?: Point, button?: "left"\|"right"}` | `{}` |
@@ -145,6 +145,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.3: `input.type` に `method` を追加、`submit` 時は実打鍵が既定
 - 1.2: `ui.observe` / `ui.unobserve` と `ax.event` 通知
 - 1.1: `screen.capture` 実装、`maxWidth` / `width` / `height` 追加
 - 1.0: 初版

@@ -39,7 +39,9 @@ export class DesktopBackend implements Backend {
     }
     return t;
   }
-  private async scope(target: string) { return scopeOf(await this.resolveTarget(target)); }
+  private async scope(target: string, within?: Ref) {
+    return within ? { ref: within } : scopeOf(await this.resolveTarget(target));
+  }
 
   async listTargets(): Promise<TargetInfo[]> {
     const h = await this.helper();
@@ -65,13 +67,14 @@ export class DesktopBackend implements Backend {
   }
 
   async snapshot(target: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.snapshot", { scope: await this.scope(target), ...opts });
+    const { within, ...rest } = opts;
+    return (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within), ...rest });
   }
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.find", { scope: await this.scope(target), query, maxNodes: opts.maxNodes });
+    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within), query, maxNodes: opts.maxNodes });
   }
-  async waitFor(target: string, condition: WaitCondition, timeoutMs: number): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target), condition, timeoutMs });
+  async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult> {
+    return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs });
   }
   async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[] }): Promise<string> {
     return (await (await this.helper()).call("ui.click", { ref, ...opts })).method;

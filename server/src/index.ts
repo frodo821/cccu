@@ -10,6 +10,8 @@ const desktop = new DesktopBackend();
 const browser = new BrowserBackend({
   // タブを前面に出すとき Chrome 自体も前面へ (デスクトップ側が使えない環境では無視)
   activateApp: () => desktop.activate("com.google.Chrome").then(() => {}, () => {}),
+  // 通常の Chrome がポート無しで動いているかの判定 (状態表示のヒント用)
+  isChromeRunning: () => desktop.listTargets().then((ts) => ts.some((t) => t.bundleId === "com.google.Chrome"), () => false),
 });
 registerTools(server, { backends: [desktop, browser], browser });
 

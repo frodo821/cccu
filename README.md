@@ -75,16 +75,24 @@ printf '%s\n' '{"id":1,"method":"sys.hello","params":{}}' '{"id":2,"method":"app
 - JavaScript dialogs (`cu_dialog`): accept or dismiss alert / confirm / prompt — done
 - iframes in browser snapshots: same-process frames and out-of-process (cross-site) frames are included and clickable — done
 
-## Browser setup
+## Browsers: two ways
 
-The browser backend attaches to a running Chrome through the DevTools protocol. Start Chrome with a debugging port
-(a separate profile keeps your normal session untouched):
+**Your normal Chrome (no setup).** Chrome exposes page content in the macOS accessibility tree, so the desktop backend
+can read and drive it like any other app, with your logins intact: `cu_targets` → `app:<pid>` of Chrome →
+`cu_find role=webarea` → `cu_snapshot within=<that ref>` → `cu_click` / `cu_type`. Navigate by typing a URL into the
+address bar with `submit: true`. Refs are AX elements and survive scrolling; iframes are included. This is the default
+way to work with the browser you are already using.
+
+**A dedicated Chrome over DevTools (CDP).** Faster snapshots, JavaScript dialogs, console/exception events, per-tab
+targets (`tab:<id>`, snapshot ids prefixed `b`). Chrome 136+ refuses a DevTools port on the default profile, so this
+always runs a separate profile: `cu_browser launch` starts it (`~/.cccu-chrome`, override with `CCCU_CHROME_PROFILE`),
+or start it yourself:
 
 ```sh
 open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.cccu-chrome"
 ```
 
-Override the endpoint with `CCCU_CDP_URL` (default `http://127.0.0.1:9222`). Tabs appear in `cu_targets` as `tab:<id>`
-and use snapshot ids prefixed with `b` (desktop snapshots use `s`).
+`cu_navigate` to a new tab launches it automatically when nothing is connected. Endpoint: `CCCU_CDP_URL`
+(default `http://127.0.0.1:9222`). `cu_browser status` explains the current state either way.
 
 Accessibility permission must be granted to the app that launches Claude Code (Terminal, iTerm, VS Code, Claude Desktop). The helper inherits it as a child process.

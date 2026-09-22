@@ -3,6 +3,10 @@ import { CDPConnection, discover } from "../../core/cdp.js";
 import { HelperError, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
 import { buildTree, collapse, markMatches, matcher, prune, render, type AXNode, type CDPAXNode, type RefTarget } from "./axtree.js";
 import { describeKey, editingCommands, modifierBits } from "./keys.js";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 /** CDP セッション。page (トップ) と OOPIF (プロセス外 iframe) の 2 種 */
 interface Session { targetId: string; sessionId: string; kind: "page" | "iframe"; page: Session; ready: Promise<void> }
@@ -31,6 +35,23 @@ export const DEFAULT_BROWSER_NOTIFICATIONS = [
 interface BrowserSubscription { id: string; targetId: string; notifications: Set<string>; off: (() => void)[] }
 export interface OpenDialog { type: string; message: string; defaultPrompt?: string }
 
+export interface BrowserStatus {
+  endpoint: string;
+  connected: boolean;
+  browser?: string;          // "Chrome/153.0.8010.53"
+  tabs?: number;
+  profile?: string;          // launch で使う専用プロファイル
+  chromeRunningWithoutPort?: boolean;
+  error?: string;
+  hint?: string;
+}
+
+const CHROME_CANDIDATES = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  join(homedir(), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+];
+
 /**
  * Chrome を CDP で操作する backend。target は "tab:<targetId>"、snapshot id は "b<N>"。
  * ref は (frame, backendDOMNodeId) に対応する (ページ遷移で無効になる → STALE_REF)。
@@ -48,11 +69,72 @@ export class BrowserBackend implements Backend {
   private openDialogs = new Map<string, OpenDialog>();   // targetId → 開いている JS ダイアログ
   private targetsDiscovered = false;
   private readonly cdpUrl: string;
+  private readonly profileDir: string;
   private readonly activateApp?: () => Promise<void>;
+  /** 通常の Chrome (デバッグポート無し) が動いているかを外から教えてもらう */
+  private readonly isChromeRunning?: () => Promise<boolean>;
 
-  constructor(opts: { cdpUrl?: string; activateApp?: () => Promise<void> } = {}) {
+  constructor(opts: { cdpUrl?: string; profileDir?: string; activateApp?: () => Promise<void>; isChromeRunning?: () => Promise<boolean> } = {}) {
     this.cdpUrl = opts.cdpUrl ?? process.env.CCCU_CDP_URL ?? DEFAULT_CDP;
+    this.profileDir = opts.profileDir ?? process.env.CCCU_CHROME_PROFILE ?? join(homedir(), ".cccu-chrome");
     this.activateApp = opts.activateApp;
+    this.isChromeRunning = opts.isChromeRunning;
+  }
+
+  // MARK: 接続状態と起動
+
+  async status(): Promise<BrowserStatus> {
+    const st: BrowserStatus = { endpoint: this.cdpUrl, connected: false, profile: this.profileDir };
+    try {
+      const { targets } = await discover(this.cdpUrl);
+      const v = await (await fetch(`${this.cdpUrl.replace(/\/$/, "")}/json/version`)).json() as { Browser?: string };
+      st.connected = true;
+      st.browser = v.Browser;
+      st.tabs = targets.filter((t) => t.type === "page").length;
+      return st;
+    } catch (e) {
+      st.error = e instanceof HelperError ? e.message : String(e);
+    }
+    st.chromeRunningWithoutPort = (await this.isChromeRunning?.().catch(() => false)) ?? false;
+    st.hint = st.chromeRunningWithoutPort
+      ? `Your Chrome is running without a DevTools port (Chrome 136+ refuses one on the default profile). You can still drive it through the accessibility tree: use its app:<pid> target with cu_find role=webarea / cu_snapshot within=<webarea ref>. For CDP, call cu_browser launch to start a separate Chrome (profile ${this.profileDir}, logins not shared).`
+      : `No Chrome with a DevTools port. Call cu_browser launch to start one (profile ${this.profileDir}), or drive a normally started Chrome through its app:<pid> target (accessibility tree).`;
+    return st;
+  }
+
+  /** 1 行の状態表示 (cu_targets / cu_status 用) */
+  async statusLine(): Promise<string> {
+    const st = await this.status();
+    if (st.connected) return `browser: connected to ${st.browser ?? "Chrome"} at ${st.endpoint} (${st.tabs} tab${st.tabs === 1 ? "" : "s"})`;
+    return `browser: NOT connected (${st.endpoint}). ${st.hint}`;
+  }
+
+  private port(): number {
+    try { return Number(new URL(this.cdpUrl).port) || 9222; } catch { return 9222; }
+  }
+
+  /** 専用プロファイルで Chrome を起動し、CDP に繋がるまで待つ。既に繋がっていれば何もしない */
+  async launch(opts: { headless?: boolean; url?: string; timeoutMs?: number } = {}): Promise<BrowserStatus> {
+    const before = await this.status();
+    if (before.connected) return before;
+    const bin = (process.env.CCCU_CHROME_BINARY ? [process.env.CCCU_CHROME_BINARY] : []).concat(CHROME_CANDIDATES).find(existsSync);
+    if (!bin) throw new HelperError("NOT_FOUND", "Google Chrome not found in /Applications (set CCCU_CHROME_BINARY)");
+    mkdirSync(this.profileDir, { recursive: true });
+    const args = [
+      `--remote-debugging-port=${this.port()}`, `--user-data-dir=${this.profileDir}`,
+      "--no-first-run", "--no-default-browser-check",
+      ...(opts.headless ? ["--headless=new"] : []),
+      opts.url ?? "about:blank",
+    ];
+    const child = spawn(bin, args, { detached: true, stdio: "ignore" });
+    child.unref();
+    const deadline = Date.now() + (opts.timeoutMs ?? 15000);
+    while (Date.now() < deadline) {
+      await sleep(200);
+      const st = await this.status();
+      if (st.connected) return st;
+    }
+    throw new HelperError("TIMEOUT", `Chrome did not expose DevTools on ${this.cdpUrl} within ${opts.timeoutMs ?? 15000}ms`);
   }
 
   ownsTarget(t: string) { return t.startsWith("tab:") || t === "tab" || t === "browser"; }
@@ -151,6 +233,7 @@ export class BrowserBackend implements Backend {
 
   /** ブラウザ固有: URL を開く / 履歴移動 / 新規タブ */
   async navigate(target: string | undefined, url: string): Promise<string> {
+    if ((!target || target === "new") && !(await this.status()).connected) await this.launch();   // 新規タブなら自動起動
     const conn = await this.connection();
     let targetId: string;
     if (!target || target === "new") {
@@ -219,8 +302,13 @@ export class BrowserBackend implements Backend {
     for (const c of node.children) await this.attachChildFrames(c, frame, depth);
   }
 
-  private async tree(s: Session): Promise<AXNode | null> {
-    return this.frameTree({ session: s });
+  private async tree(s: Session, within?: Ref): Promise<AXNode | null> {
+    const root = await this.frameTree({ session: s });
+    if (!root || !within) return root;
+    const el = this.resolve(within);
+    const found = findNode(root, (n) => n.backendNodeId === el.backendNodeId && n.frame === el.frame);
+    if (!found) throw new HelperError("STALE_REF", `${within.snapshot}/${within.ref} is no longer in the page`);
+    return found;
   }
 
   private register(targetId: string, refs: Map<string, ElementRef>): string {
@@ -232,7 +320,7 @@ export class BrowserBackend implements Backend {
 
   async snapshot(target: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     const s = await this.session(this.targetIdOf(target));
-    const root = await this.tree(s);
+    const root = await this.tree(s, opts.within);
     if (!root) return { snapshot: this.register(s.targetId, new Map()), text: "", refCount: 0, truncated: false };
     const forest = opts.interestingOnly === false ? [root] : collapse(root);
     return this.finish(s, forest, opts);
@@ -240,7 +328,7 @@ export class BrowserBackend implements Backend {
 
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     const s = await this.session(this.targetIdOf(target));
-    const root = await this.tree(s);
+    const root = await this.tree(s, opts.within);
     if (!root) throw new HelperError("NOT_FOUND", "page has no accessibility tree");
     markMatches(root, matcher(query));
     return this.finish(s, prune(root), { ...opts, maxNodes: opts.maxNodes ?? 5000 });
@@ -260,23 +348,24 @@ export class BrowserBackend implements Backend {
     return { snapshot: this.register(s.targetId, refs), text: texts.join("\n"), refCount: refs.size, truncated };
   }
 
-  async waitFor(target: string, cond: WaitCondition, timeoutMs: number): Promise<SnapshotResult> {
+  async waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult> {
     const deadline = Date.now() + timeoutMs;
+    const opts = { within };
     if ("stable" in cond) {
-      let last = (await this.snapshot(target)).text, since = Date.now();
+      let last = (await this.snapshot(target, opts)).text, since = Date.now();
       while (Date.now() < deadline) {
         await sleep(100);
-        const now = (await this.snapshot(target)).text;
+        const now = (await this.snapshot(target, opts)).text;
         if (now !== last) { last = now; since = Date.now(); }
-        else if (Date.now() - since >= cond.stable) return this.snapshot(target);
+        else if (Date.now() - since >= cond.stable) return this.snapshot(target, opts);
       }
       throw new HelperError("TIMEOUT", `page did not settle within ${timeoutMs}ms`);
     }
     const wantExists = "exists" in cond;
     const query = wantExists ? cond.exists : cond.gone;
     while (true) {
-      const r = await this.find(target, query);
-      if ((r.refCount > 0) === wantExists) return wantExists ? r : this.snapshot(target);
+      const r = await this.find(target, query, opts);
+      if ((r.refCount > 0) === wantExists) return wantExists ? r : this.snapshot(target, opts);
       if (Date.now() >= deadline) throw new HelperError("TIMEOUT", `condition not met within ${timeoutMs}ms`);
       await sleep(150);
     }
@@ -560,6 +649,12 @@ export class BrowserBackend implements Backend {
     this.sessions.clear();
     this.frameSessions.clear();
   }
+}
+
+function findNode(n: AXNode, pred: (n: AXNode) => boolean): AXNode | null {
+  if (pred(n)) return n;
+  for (const c of n.children) { const f = findNode(c, pred); if (f) return f; }
+  return null;
 }
 
 function toElementRef(v: RefTarget): ElementRef {

@@ -57,7 +57,7 @@ public func registerUIMethods(_ d: Dispatcher) {
         let mods = p.modifiers()
         if let el = try p.optRef() {
             let plain = (button ?? "left") == "left" && count == 1 && mods.isEmpty
-            if plain, el.actionNames().contains(kAXPressAction) {
+            if plain, !el.isWebContent, el.actionNames().contains(kAXPressAction) {
                 bringToFront(el)
                 try el.perform(kAXPressAction)
                 return ["method": "ax"] as JSONObject
@@ -119,11 +119,14 @@ func bringToFront(_ el: AXElement) {
 
 func focus(_ el: AXElement) throws {
     bringToFront(el)
+    if el.isFocused { return }
     if el.isSettable(kAXFocusedAttribute) {
-        try el.set(kAXFocusedAttribute, kCFBooleanTrue)
-    } else if let c = el.center {
-        try Input.click(at: c)
-    } else {
-        throw HelperError(.unsupported, "element cannot be focused")
+        try? el.set(kAXFocusedAttribute, kCFBooleanTrue)
+        // Chrome のアドレスバーなどは設定を受け付けても実際にはフォーカスが移らない。確認して駄目ならクリックする
+        Thread.sleep(forTimeInterval: 0.05)
+        if el.isFocused { return }
     }
+    guard let c = el.center else { throw HelperError(.unsupported, "element cannot be focused") }
+    try Input.click(at: c)
+    Thread.sleep(forTimeInterval: 0.05)
 }

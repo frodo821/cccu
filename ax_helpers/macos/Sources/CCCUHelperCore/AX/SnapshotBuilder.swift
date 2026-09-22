@@ -42,9 +42,13 @@ public enum SnapshotBuilder {
         "link", "menuitem", "menubaritem", "menu", "tab", "row", "cell", "disclosuretriangle", "scrollbar",
         "toolbar", "tabgroup", "table", "outline", "list", "webarea", "image", "colorwell", "datepicker",
     ]
+    /// expanded / collapsed を表示する意味があるロール (Chrome は多くのノードに AXExpanded=false を付ける)
+    static let expandableRoles: Set<String> = [
+        "disclosuretriangle", "combobox", "popupbutton", "menubutton", "row", "outlinerow", "menubaritem", "menu", "menuitem", "tab", "treeitem", "button",
+    ]
     /// 子をたどらないロール (巨大になりがち、または中身が意味を持たない)
     static let leafRoles: Set<String> = ["menubar", "ruler"]   // メニューはタイトル行だけ、ルーラーは中身を出さない
-    static let skipRoles: Set<String> = ["unknown"]
+    static let skipRoles: Set<String> = ["unknown", "listmarker"]
 
     // MARK: 走査
 
@@ -100,7 +104,7 @@ public enum SnapshotBuilder {
         var title = el.title
         if title == nil || title!.isEmpty { title = el.descriptionText }
         if (title == nil || title!.isEmpty), role == "link" || role == "image" { title = el.string("AXHelp") }
-        if let t = title, t.isEmpty { title = nil }
+        if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines) { title = t.isEmpty ? nil : t }
 
         var value: Any? = nil
         var states: [String] = []
@@ -113,21 +117,22 @@ public enum SnapshotBuilder {
             // 静的テキストは title がなければ value を title 扱いにする
             if title == nil, let s = v as? String { title = s }
         default:
-            if let s = v as? String { value = s }
+            if let s = v as? String { if !s.isEmpty { value = s } }
             else if let n = v as? Double { value = n == n.rounded() ? Int(n) : n }
             else if let b = v as? Bool { value = b }
         }
         if role == "window" ? el.isMainWindow : el.isFocused { states.append("focused") }
         if !el.isEnabled { states.append("disabled") }
         if el.bool(kAXSelectedAttribute) == true { states.append("selected") }
-        if let ex = el.bool(kAXExpandedAttribute) { states.append(ex ? "expanded" : "collapsed") }
+        if expandableRoles.contains(role), let ex = el.bool(kAXExpandedAttribute) { states.append(ex ? "expanded" : "collapsed") }
         if el.bool(kAXMinimizedAttribute) == true { states.append("minimized") }
 
         let actions = el.actionNames()
+        let container = ["group", "generic", "unknown", "splitgroup", "layoutarea", "layoutitem"].contains(role)
         let actionable = refRoles.contains(role)
-            || actions.contains(where: { $0 != "AXScrollToVisible" && $0 != "AXShowMenu" })
-            || el.isSettable(kAXValueAttribute)
-            || el.isSettable(kAXFocusedAttribute)
+            || actions.contains(where: { $0 != "AXScrollToVisible" && $0 != "AXShowMenu" && !(container && $0 == "AXPress") })
+            || (el.isSettable(kAXValueAttribute) && !container)
+            || (el.isSettable(kAXFocusedAttribute) && !container)   // Chrome は全 group にフォーカス設定可を付ける
         return Node(element: el, role: role, title: title, value: value, states: states, actionable: actionable)
     }
 
@@ -153,6 +158,9 @@ public enum SnapshotBuilder {
     /// interestingOnly: title/value/ref のない group/generic は子を親に繰り上げる
     static func collapse(_ node: Node) -> [Node] {
         node.children = node.children.flatMap(collapse)
+        if let t = node.title {
+            node.children.removeAll { $0.role == "text" && $0.title == t && !$0.matched && $0.children.isEmpty }
+        }
         let boring = ["group", "generic", "splitgroup", "layoutarea", "layoutitem", "unknown"].contains(node.role)
         if boring && node.title == nil && node.value == nil && !node.actionable && !node.matched {
             return node.children

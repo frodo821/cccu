@@ -69,7 +69,7 @@ export interface Methods {
     params: { scope: Scope; condition: { exists: FindQuery } | { gone: FindQuery } | { stable: number }; timeoutMs: number };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean }; result: { method: "selectedText" | "value" | "keys" } };
+  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax" }; result: { method: string } };
   "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number }; result: Record<string, never> };
   "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number }; result: Record<string, never> };
   "input.mouse": {

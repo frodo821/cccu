@@ -45,6 +45,17 @@ extension AXElement {
         return _AXUIElementGetWindow(raw, &id) == .success ? Int(id) : 0
     }
     var center: CGPoint? { frame.map { CGPoint(x: $0.midX, y: $0.midY) } }
+    /// ブラウザのウェブ内容 (AXWebArea の子孫) か。Chrome は AXPress を受け付けても実行しないことがあるので、実クリックに切り替える判定に使う
+    var isWebContent: Bool {
+        var cur: AXElement? = self
+        for _ in 0..<40 {
+            guard let c = cur else { return false }
+            if c.role == "AXWebArea" { return true }
+            if c.role == kAXWindowRole || c.role == kAXApplicationRole { return false }
+            cur = c.element(kAXParentAttribute)
+        }
+        return false
+    }
     /// 自分を含む最寄りのウィンドウ要素
     var window: AXElement? {
         if role == kAXWindowRole { return self }

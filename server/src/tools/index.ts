@@ -25,6 +25,7 @@ const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optiona
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
 const targetArg = z.string().describe('"app:<pid>", "window:<pid>:<n>", a bundle id like com.apple.TextEdit, or "tab:<id>" for a Chrome tab');
 const findShape = { role: z.string().optional(), text: z.string().optional(), value: z.string().optional() };
+const withinArg = z.string().optional().describe('Limit to the subtree of this ref (e.g. the "webarea" of a Chrome window to skip the browser chrome)');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
 export function registerTools(server: McpServer, ctx: ToolContext) {
@@ -50,12 +51,25 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       inputSchema: { kind: z.enum(["all", "desktop", "browser"]).optional() } },
     ({ kind = "all" }) => run(async () => {
       const lines: string[] = [];
+      if (kind !== "desktop") lines.push(await ctx.browser.statusLine());
       for (const b of ctx.backends) {
         if (kind !== "all" && b.kind !== kind) continue;
         try { lines.push(...(await b.listTargets()).map(fmtTarget)); }
-        catch (e) { lines.push(`(${b.kind}: ${e instanceof HelperError ? `${e.message}. ${e.data.hint ?? ""}` : String(e)})`); }
+        catch (e) { if (b.kind !== "browser") lines.push(`(${b.kind}: ${e instanceof HelperError ? `${e.message}. ${e.data.hint ?? ""}` : String(e)})`); }
       }
       return text(lines.join("\n") || "(no targets)");
+    }));
+
+  server.registerTool("cu_browser",
+    { description: "Browser connection: \"status\" reports whether Chrome is reachable over DevTools and what to do if not; \"launch\" starts a separate Chrome (dedicated profile, logins not shared) with the DevTools port and connects to it.",
+      inputSchema: { action: z.enum(["status", "launch"]), url: z.string().optional().describe("launch: URL to open (default about:blank)") } },
+    ({ action, url }) => run(async () => {
+      if (action === "launch") {
+        const st = await ctx.browser.launch({ url });
+        return text(`launched and connected: ${st.browser} at ${st.endpoint}, profile ${st.profile}, ${st.tabs} tab(s)`);
+      }
+      const st = await ctx.browser.status();
+      return text(JSON.stringify(st, null, 2));
     }));
 
   server.registerTool("cu_activate",
@@ -64,20 +78,20 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_snapshot",
     { description: "Accessibility-tree snapshot of a target. Actionable elements carry [ref=eN]; pass them to other tools as \"<snapshot>/<ref>\".",
-      inputSchema: { target: targetArg, maxDepth: z.number().int().optional(), maxNodes: z.number().int().optional().describe("Default 800"), interestingOnly: z.boolean().optional() } },
-    ({ target, ...opts }) => run(async () => snap(await byTarget(target).snapshot(target, opts))));
+      inputSchema: { target: targetArg, within: withinArg, maxDepth: z.number().int().optional(), maxNodes: z.number().int().optional().describe("Default 800"), interestingOnly: z.boolean().optional() } },
+    ({ target, within, ...opts }) => run(async () => snap(await byTarget(target).snapshot(target, { ...opts, within: within ? parseRef(within) : undefined }))));
 
   server.registerTool("cu_find",
     { description: "Find elements by role and/or text within a target; returns matches (with their contents) and ancestors. Cheaper than a full snapshot.",
-      inputSchema: { target: targetArg, ...findShape, exact: z.boolean().optional() } },
-    ({ target, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q)))));
+      inputSchema: { target: targetArg, within: withinArg, ...findShape, exact: z.boolean().optional() } },
+    ({ target, within, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined }))));
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
-      inputSchema: { target: targetArg, exists: z.object(findShape).optional(), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000") } },
-    ({ target, exists, gone, stableMs, timeoutMs = 5000 }) => run(async () => {
+      inputSchema: { target: targetArg, within: withinArg, exists: z.object(findShape).optional(), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000") } },
+    ({ target, within, exists, gone, stableMs, timeoutMs = 5000 }) => run(async () => {
       const cond = exists ? { exists: toQuery(exists) } : gone ? { gone: toQuery(gone) } : { stable: stableMs ?? 500 };
-      return snap(await byTarget(target).waitFor(target, cond, timeoutMs));
+      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined));
     }));
 
   server.registerTool("cu_click",
@@ -122,7 +136,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     ({ ref, action }) => run(async () => { const [b, r] = byRef(ref); await b.action(r, action); return text("ok"); }));
 
   server.registerTool("cu_navigate",
-    { description: "Browser only: open a URL in a tab (target omitted or \"new\" creates a tab), go \"back\" / \"forward\", or \"close\" the tab.",
+    { description: "Browser only: open a URL in a tab (target omitted or \"new\" creates a tab; launches Chrome automatically if not connected), go \"back\" / \"forward\", or \"close\" the tab.",
       inputSchema: { target: z.string().optional().describe('"tab:<id>" or "new"'), url: z.string().describe('URL, or "back" / "forward" / "close"') } },
     ({ target, url }) => run(async () => text(await ctx.browser.navigate(target, url))));
 
@@ -172,6 +186,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     () => run(async () => {
       const out: Record<string, unknown> = {};
       for (const b of ctx.backends) {
+        if (b.kind === "browser") { out.browser = await ctx.browser.status(); continue; }
         try { await b.listTargets(); out[b.kind] = "ok"; } catch (e) { out[b.kind] = e instanceof HelperError ? { error: e.message, ...e.data } : String(e); }
       }
       return text(JSON.stringify(out, null, 2));

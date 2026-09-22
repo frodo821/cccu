@@ -1,7 +1,7 @@
 import Foundation
 import ApplicationServices
 
-public let protocolVersion = "1.2"
+public let protocolVersion = "1.3"
 public let helperVersion = "0.1.0"
 
 public enum Trust {

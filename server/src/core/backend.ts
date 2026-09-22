@@ -13,7 +13,7 @@ export interface TargetInfo {
   extra?: string[];      // "[hidden]" など表示用フラグ
 }
 
-export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean }
+export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; within?: Ref }
 export type WaitCondition = { exists: FindQuery } | { gone: FindQuery } | { stable: number };
 
 export interface Backend {
@@ -26,7 +26,7 @@ export interface Backend {
   activate(target: string): Promise<string>;
   snapshot(target: string, opts?: SnapshotOptions): Promise<SnapshotResult>;
   find(target: string, query: FindQuery, opts?: SnapshotOptions): Promise<SnapshotResult>;
-  waitFor(target: string, cond: WaitCondition, timeoutMs: number): Promise<SnapshotResult>;
+  waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult>;
 
   click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[] }): Promise<string>;
   type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean }): Promise<string>;

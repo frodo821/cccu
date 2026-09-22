@@ -255,7 +255,8 @@ cccu/
 6. ✅ AXObserver 通知: `ui.observe` / `ax.event` (v1.2)、TS 側はイベントバッファ + `cu_observe` / `cu_events` / `cu_unobserve`
 7. ✅ iframe / OOPIF のスナップショット: 同一プロセス iframe は `getFullAXTree({frameId})`、OOPIF は `Target.setAutoAttach` で得た専用セッション。ref は (frame, backendDOMNodeId) で、OOPIF 内の座標は埋め込み元 `<iframe>` の位置を足してトップページの viewport 座標に変換する
 8. ✅ ブラウザのイベント購読 (ナビゲーション、ロード、ダイアログ、コンソール、例外、タブ) と `cu_dialog`
-9. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー
+9. ✅ 普段の Chrome を AX ツリーで操作 (設定不要)。`within` による部分木スナップショット、`cu_browser status/launch`
+10. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー、Chrome 拡張による CDP 中継 (普段の Chrome で CDP 品質を得る選択肢)
 
 ## 9. 既知の制約・前提
 
@@ -267,6 +268,10 @@ cccu/
 - **iframe**: `getFullAXTree` は 1 フレーム分しか返さない。`iframe` ノードごとに `DOM.describeNode` で content frame の id を引き、同一プロセスなら同じセッションで `frameId` 指定、OOPIF (`Target.attachedToTarget` で type=iframe) なら専用セッションで取得して子としてぶら下げる。入力イベントは常にトップページのセッションへ送る
 - **座標**: `DOM.getBoxModel` はスクロール量込みのドキュメント座標を返すので、クリックには使えない (scrollY が 0 のときだけ偶然合う)。viewport 基準の `DOM.getContentQuads` を使う。OOPIF 内の要素は、子フレームの viewport 座標に親側で取った `<iframe>` の viewport 座標を足す。子フレームでの scrollIntoView は親のスクロールも非同期に動かすので、両方の位置が安定するまで読み直してからクリックする
 - **ブラウザのイベント**: `Page.frameNavigated` / `loadEventFired` / `javascriptDialogOpening` / `Runtime.consoleAPICalled` / `exceptionThrown` / `Target.targetCreated` などを購読し、desktop と同じ `UIEvent` 形にしてバッファする。購読 id の先頭文字で振り分ける (`o` = desktop, `w` = browser)。JS ダイアログは開いている間ページ操作をブロックするので、購読の有無に関係なく追跡し `cu_dialog` で処理できるようにする
+- **普段の Chrome は AX で操作する**: Chrome 136+ は既定プロファイルで `--remote-debugging-port` を拒否するので、ユーザーの Chrome に CDP でアタッチする道はない。代わりに Chrome はウェブ内容を AX ツリーに出す (0.1 秒で 90 ref 程度、ログイン状態そのまま)。`webarea` を `within` に指定してブラウザ UI を除く。CDP はあくまで専用プロファイル (`cu_browser launch`) 向け
+- **Chrome のアドレスバー**: AX で挿入した文字列は表示されるが「ユーザー入力」として扱われず、Enter で遷移しない。末尾 1 文字だけ打鍵しても同期しない。`submit` 時は全文を実打鍵する (`input.type` の `method`、v1.3)
+- **Chrome のウェブ内容の AXPress**: 成功を返すが実行されないことがある。`AXWebArea` の子孫は実マウスクリックにする
+- **Chrome の AX ノイズ**: 全 `group` に AXFocused 設定可と空文字の AXValue、多くのノードに AXExpanded=false が付く。コンテナは操作可能扱いにしない、空文字は値なし、expanded/collapsed は意味のあるロールだけ表示する
 - **AXObserver**: コールバックはメイン run loop で来る。`RunLoop.main.run()` 中に `DispatchQueue.main.sync` でリクエストを処理しているので、応答と通知は同じスレッドで直列化される
 
 実装で判明したこと (マイルストーン 2)

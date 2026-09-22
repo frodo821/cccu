@@ -16,7 +16,17 @@ public func registerInputMethods(_ d: Dispatcher) {
             target = AXElement.systemWide.element(kAXFocusedUIElementAttribute)
         }
         let pid = target?.pid
-        let method = try typeInto(target, text: text, clear: clear)
+        // method: "auto" (既定) | "keys" | "ax"。submit 時は既定で実打鍵にする:
+        // AX で挿入した文字列は、アプリによっては「ユーザー入力」として扱われず Enter が効かない (Chrome のアドレスバーなど)
+        let mode = p.optString("method") ?? (submit ? "keys" : "auto")
+        var method = try typeInto(target, text: text, clear: clear, forceKeys: mode == "keys")
+        if mode == "keys", let el = target {
+            Thread.sleep(forTimeInterval: 0.05)
+            if let v = el.value as? String, !v.hasSuffix(text) {
+                // 打鍵が落ちた場合 (新規ウィンドウ直後など) は AX で入れ直す
+                method = try typeInto(el, text: text, clear: true) + "(fallback)"
+            }
+        }
         if submit { try Input.pressKey("Enter", pid: pid) }
         return ["method": method] as JSONObject
     }
@@ -56,8 +66,8 @@ public func registerInputMethods(_ d: Dispatcher) {
 ///  2. AXValue の設定 = 既存値 + text で置き換え
 ///  3. CGEvent の Unicode 打鍵 (アプリがどちらの属性も受け付けない場合)
 /// 戻り値は使った経路 ("selectedText" | "value" | "keys")
-func typeInto(_ el: AXElement?, text: String, clear: Bool) throws -> String {
-    if let el = el {
+func typeInto(_ el: AXElement?, text: String, clear: Bool, forceKeys: Bool = false) throws -> String {
+    if let el = el, !forceKeys {
         if clear, el.isSettable(kAXValueAttribute) { try el.set(kAXValueAttribute, "" as CFString) }
         if el.isSettable(kAXSelectedTextAttribute), el.string(kAXSelectedTextAttribute) != nil {
             if clear, !el.isSettable(kAXValueAttribute) { try Input.pressKey("a", modifiers: ["cmd"], pid: el.pid) }

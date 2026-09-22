@@ -12,8 +12,10 @@ Workflow (always in this order):
 4. After any action that changes the UI, take a new snapshot or use `cu_wait` (`exists` / `gone` / `stableMs`). Refs from an old snapshot fail with `STALE_REF`.
 
 Browser notes
-- Chrome must run with `--remote-debugging-port=9222`; if `cu_targets` reports no DevTools endpoint, show the user the command from the README instead of trying to launch Chrome yourself.
-- Browser refs look like `b2/e5`. They die on navigation: after `cu_navigate` or a click that loads a page, take a new snapshot.
+- Two ways to work with Chrome. Check `cu_targets` first: its first line says whether a DevTools (CDP) Chrome is connected.
+  - The user's normal Chrome shows up as an app (`app:<pid>`, bundle com.google.Chrome). Drive it through the accessibility tree: `cu_find target=app:<pid> role=webarea` gives the page root; then `cu_snapshot within=<that ref>` to skip toolbars and extensions. To open a URL, `cu_find role=textfield text=アドレス` (the address bar; its name follows the system language) and `cu_type` into it with `clear: true, submit: true`. New tab: `cu_key key=t modifiers=[cmd]`. Logins are the user's own, so be careful with what you click.
+  - A CDP Chrome (`tab:<id>` targets) gives faster snapshots, `cu_navigate`, dialogs, and console events, but always runs in a separate profile without the user's logins. `cu_browser launch` starts one; `cu_navigate` to a new tab does so automatically. Do not tell the user to restart their Chrome with a debugging port: Chrome 136+ ignores it on the default profile.
+- CDP refs look like `b2/e5`. They die on navigation: after `cu_navigate` or a click that loads a page, take a new snapshot.
 - `cu_set_value` handles selects (by option value or label), checkboxes and inputs with proper input/change events. `cu_key` supports cmd+A/C/V/X/Z in text fields.
 - Content inside iframes (including cross-site ones) appears under the `iframe` node and can be acted on like anything else.
 
