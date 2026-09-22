@@ -249,11 +249,17 @@ cccu/
 
 1. ✅ **Protocol first**: `docs/PROTOCOL.md` と Swift 側 `Protocol/` (型 + ディスパッチ + `sys.hello`) + TS 側クライアント。`sys.hello` / `app.list` が往復するところまで
 2. ✅ Desktop: `ui.snapshot` → `ui.click` → `input.type` → `ui.find` の順で実装。TextEdit で「新規書類を開いて文字を打つ」を通す (`make e2e`)
-3. Browser: CDP 接続 → snapshot → click/type。Chrome で「検索して結果をクリック」を通す
+3. ✅ Browser: CDP 接続 → snapshot → click/type。フィクスチャページでフォーム入力・送信・遷移・STALE_REF を `bun test` で検証
 4. MCP ツール層 + SKILL.md + plugin.json、`claude --plugin-dir` で動作確認
 5. `ui.waitFor`、screenshot、ヘルパーのビルド配布 (プラグインインストール時に `swift build`)
 
 ## 9. 既知の制約・前提
+
+実装で判明したこと (マイルストーン 3)
+- **CDP クライアント**: Node 22+ / Bun のグローバル WebSocket で自前実装 (`core/cdp.ts`)。ブラウザ接続 1 本 + flatten セッション
+- **ref の名前空間**: snapshot id の先頭文字で backend を判別する (`s` = desktop, `b` = browser)。ツール層はこれだけで振り分ける
+- **編集ショートカット**: macOS の Chrome は合成キーイベントの cmd+A 等を編集コマンドに変換しない。`Input.dispatchKeyEvent` の `commands` (selectAll など) を明示する
+- **AX ツリーの整形**: `generic` / `labeltext` / `menulistpopup` などの無名ラッパーは畳み、親と同じ静的テキストの子は落とす。`getFullAXTree` はメインフレームのみで iframe の中身は含まれない
 
 実装で判明したこと (マイルストーン 2)
 - **前面化**: 非 GUI プロセスからの `NSRunningApplication.activate` は macOS 14+ で無視される。AX の `AXFrontmost` 属性設定で行い、ダメなら `NSWorkspace.openApplication` で再オープンする

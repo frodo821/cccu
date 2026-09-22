@@ -19,6 +19,7 @@ Claude Code plugin that drives Chrome and macOS apps through their **accessibili
 (cd ax_helpers/macos && make test)    # Swift unit + binary integration tests (no UI touched)
 (cd ax_helpers/macos && make e2e)     # drives TextEdit for real (types, closes without saving)
 (cd server && bun run smoke)          # TypeScript client ↔ helper roundtrip
+(cd server && bun test)               # browser backend against headless Chrome (temp profile)
 ```
 
 ## Try the plugin
@@ -38,7 +39,19 @@ printf '%s\n' '{"id":1,"method":"sys.hello","params":{}}' '{"id":2,"method":"app
 ## Status
 
 - macOS desktop: snapshot, find, click, type, keys, scroll, set value, wait — done (milestone 2)
-- Browser via CDP: not started (milestone 3)
-- Screenshot: not started
+- Chrome via CDP: tabs, navigate, snapshot, find, click, type, keys, set value, wait — done (milestone 3)
+- Screenshot, iframes/OOPIF in browser snapshots: not yet
+
+## Browser setup
+
+The browser backend attaches to a running Chrome through the DevTools protocol. Start Chrome with a debugging port
+(a separate profile keeps your normal session untouched):
+
+```sh
+open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.cccu-chrome"
+```
+
+Override the endpoint with `CCCU_CDP_URL` (default `http://127.0.0.1:9222`). Tabs appear in `cu_targets` as `tab:<id>`
+and use snapshot ids prefixed with `b` (desktop snapshots use `s`).
 
 Accessibility permission must be granted to the app that launches Claude Code (Terminal, iTerm, VS Code, Claude Desktop). The helper inherits it as a child process.

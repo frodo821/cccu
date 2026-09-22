@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>cccu fixture</title></head>
+<body>
+  <h1>Sign up</h1>
+  <form id="f" onsubmit="event.preventDefault(); document.getElementById('out').textContent = 'submitted:' + name.value + ':' + plan.value + ':' + agree.checked; return false;">
+    <label>Name <input id="name" name="name" placeholder="Your name"></label>
+    <label>Plan
+      <select id="plan" name="plan"><option value="free">Free</option><option value="pro">Pro</option></select>
+    </label>
+    <label><input type="checkbox" id="agree" name="agree"> I agree</label>
+    <button type="submit">Create account</button>
+  </form>
+  <p id="out" aria-live="polite">not submitted</p>
+  <button id="toggle" onclick="const d=document.getElementById('dlg'); d.hidden=!d.hidden;">Toggle panel</button>
+  <div id="dlg" role="dialog" aria-label="Details" hidden><p>Panel content</p><a href="#top">Top link</a></div>
+  <div style="height:2000px"></div>
+  <button id="far">Far away button</button>
+</body></html>

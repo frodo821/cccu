@@ -8,7 +8,8 @@
     "build": "bun build src/index.ts --target=node --outfile dist/index.js",
     "dev": "bun run src/index.ts",
     "smoke": "bun run scripts/smoke.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
