@@ -122,8 +122,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     ({ ref, action }) => run(async () => { const [b, r] = byRef(ref); await b.action(r, action); return text("ok"); }));
 
   server.registerTool("cu_navigate",
-    { description: "Browser only: open a URL in a tab (target omitted or \"new\" creates a tab), or go \"back\" / \"forward\".",
-      inputSchema: { target: z.string().optional().describe('"tab:<id>" or "new"'), url: z.string().describe('URL, or "back" / "forward"') } },
+    { description: "Browser only: open a URL in a tab (target omitted or \"new\" creates a tab), go \"back\" / \"forward\", or \"close\" the tab.",
+      inputSchema: { target: z.string().optional().describe('"tab:<id>" or "new"'), url: z.string().describe('URL, or "back" / "forward" / "close"') } },
     ({ target, url }) => run(async () => text(await ctx.browser.navigate(target, url))));
 
   server.registerTool("cu_screenshot",
@@ -136,8 +136,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     }));
 
   server.registerTool("cu_observe",
-    { description: "Subscribe to UI events of an app (window created, focus changed, sheet opened, menu opened, title changed...). Events accumulate; read them with cu_events. Desktop only.",
-      inputSchema: { target: targetArg, notifications: z.array(z.string()).optional().describe("AX notification names, e.g. AXWindowCreated, AXValueChanged; default is a sensible set") } },
+    { description: "Subscribe to events of an app (AX notifications: window created, focus changed, sheet opened...) or a Chrome tab (navigated, loaded, dialogOpened, dialogClosed, consoleError, exception, tabCreated, tabDestroyed; also domContentLoaded, console, tabInfoChanged). Events accumulate; read them with cu_events.",
+      inputSchema: { target: targetArg, notifications: z.array(z.string()).optional().describe("Desktop: AX notification names (AXWindowCreated, AXValueChanged...). Browser: names listed above. Default is a sensible set") } },
     ({ target, notifications }) => run(async () => {
       const r = await byTarget(target).observe(target, notifications);
       return text(`subscription=${r.subscription}\nnotifications: ${r.notifications.join(", ")}`);
@@ -157,9 +157,15 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
   server.registerTool("cu_unobserve",
     { description: "Cancel a cu_observe subscription.", inputSchema: { subscription: z.string() } },
     ({ subscription }) => run(async () => {
-      const b = ctx.backends.find((b) => b.kind === "desktop") ?? ctx.backends[0];
+      // 購読 id の先頭文字で振り分け: o = desktop (helper), w = browser
+      const b = ctx.backends.find((b) => (subscription.startsWith("w") ? b.kind === "browser" : b.kind === "desktop")) ?? ctx.backends[0];
       await b.unobserve(subscription); return text("ok");
     }));
+
+  server.registerTool("cu_dialog",
+    { description: "Browser only: accept or dismiss the JavaScript dialog (alert/confirm/prompt/beforeunload) currently open on a tab. While a dialog is open, other page actions block.",
+      inputSchema: { target: targetArg, accept: z.boolean().optional().describe("Default true"), promptText: z.string().optional().describe("Text to enter for prompt()") } },
+    ({ target, accept = true, promptText }) => run(async () => text(await ctx.browser.handleDialog(target, accept, promptText))));
 
   server.registerTool("cu_status",
     { description: "Backend status: helper protocol version and Accessibility trust, Chrome DevTools reachability.", inputSchema: {} },

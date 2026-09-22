@@ -43,7 +43,8 @@ printf '%s\n' '{"id":1,"method":"sys.hello","params":{}}' '{"id":2,"method":"app
 - macOS desktop: snapshot, find, click, type, keys, scroll, set value, wait — done (milestone 2)
 - Chrome via CDP: tabs, navigate, snapshot, find, click, type, keys, set value, wait — done (milestone 3)
 - Screenshot (`cu_screenshot`): windows, apps, display, tabs — done (desktop needs Screen Recording permission)
-- UI events (`cu_observe` / `cu_events`): AXObserver notifications for desktop apps — done
+- UI events (`cu_observe` / `cu_events`): AXObserver notifications for desktop apps, and navigation / load / dialog / console / exception / tab events for Chrome tabs — done
+- JavaScript dialogs (`cu_dialog`): accept or dismiss alert / confirm / prompt — done
 - iframes in browser snapshots: same-process frames and out-of-process (cross-site) frames are included and clickable — done
 
 ## Browser setup

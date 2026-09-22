@@ -1,4 +1,4 @@
-import type { Backend, SnapshotOptions, TargetInfo, WaitCondition } from "../../core/backend.js";
+import type { Backend, SnapshotOptions, TargetInfo, UIEvent, WaitCondition } from "../../core/backend.js";
 import { CDPConnection, discover } from "../../core/cdp.js";
 import { HelperError, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
 import { buildTree, collapse, markMatches, matcher, prune, render, type AXNode, type CDPAXNode, type RefTarget } from "./axtree.js";
@@ -17,6 +17,19 @@ interface Snapshot { targetId: string; refs: Map<string, ElementRef> }
 
 const DEFAULT_CDP = "http://127.0.0.1:9222";
 const KEEP_SNAPSHOTS = 8;
+const MAX_EVENTS = 200;
+
+/** ブラウザで購読できるイベント名 (cu_observe の notifications) */
+export const BROWSER_NOTIFICATIONS = [
+  "navigated", "loaded", "domContentLoaded", "dialogOpened", "dialogClosed",
+  "consoleError", "console", "exception", "tabCreated", "tabDestroyed", "tabInfoChanged",
+] as const;
+export const DEFAULT_BROWSER_NOTIFICATIONS = [
+  "navigated", "loaded", "dialogOpened", "dialogClosed", "consoleError", "exception", "tabCreated", "tabDestroyed",
+];
+
+interface BrowserSubscription { id: string; targetId: string; notifications: Set<string>; off: (() => void)[] }
+export interface OpenDialog { type: string; message: string; defaultPrompt?: string }
 
 /**
  * Chrome を CDP で操作する backend。target は "tab:<targetId>"、snapshot id は "b<N>"。
@@ -29,6 +42,11 @@ export class BrowserBackend implements Backend {
   private frameSessions = new Map<string, Session>();   // OOPIF の frameId (= targetId) → session
   private snapshots = new Map<string, Snapshot>();
   private snapshotCounter = 0;
+  private subscriptions = new Map<string, BrowserSubscription>();
+  private subscriptionCounter = 0;
+  private eventBuffer: UIEvent[] = [];
+  private openDialogs = new Map<string, OpenDialog>();   // targetId → 開いている JS ダイアログ
+  private targetsDiscovered = false;
   private readonly cdpUrl: string;
   private readonly activateApp?: () => Promise<void>;
 
@@ -49,6 +67,15 @@ export class BrowserBackend implements Backend {
     this.conn = conn;
     this.sessions.clear();
     this.frameSessions.clear();
+    this.subscriptions.clear();
+    this.openDialogs.clear();
+    this.targetsDiscovered = false;
+    conn.on("Page.javascriptDialogOpening", (p, sid) => {
+      const t = this.targetIdForSession(sid); if (t) this.openDialogs.set(t, { type: p.type, message: p.message, defaultPrompt: p.defaultPrompt });
+    });
+    conn.on("Page.javascriptDialogClosed", (_p, sid) => {
+      const t = this.targetIdForSession(sid); if (t) this.openDialogs.delete(t);
+    });
     conn.on("Target.detachedFromTarget", (p) => {
       for (const [k, s] of this.sessions) if (s.sessionId === p.sessionId) this.sessions.delete(k);
       for (const [k, s] of this.frameSessions) if (s.sessionId === p.sessionId) this.frameSessions.delete(k);
@@ -68,6 +95,11 @@ export class BrowserBackend implements Backend {
       this.frameSessions.set(s.targetId, s);
     });
     return conn;
+  }
+
+  private targetIdForSession(sessionId?: string): string | undefined {
+    for (const s of this.sessions.values()) if (s.sessionId === sessionId) return s.targetId;
+    return undefined;
   }
 
   private targetIdOf(target: string): string {
@@ -126,6 +158,11 @@ export class BrowserBackend implements Backend {
       targetId = r.targetId;
     } else {
       targetId = this.targetIdOf(target);
+    }
+    if (url === "close") {
+      await conn.send("Target.closeTarget", { targetId });
+      this.sessions.delete(targetId);
+      return `closed tab:${targetId}`;
     }
     const s = await this.session(targetId);
     if (url === "back" || url === "forward") {
@@ -255,29 +292,55 @@ export class BrowserBackend implements Backend {
     return el;
   }
 
-  /** 要素の content box の左上と中心を、トップページの viewport 座標で返す */
+  /** 要素の左上と中心を、トップページの viewport 座標で返す */
   private async absoluteBox(el: ElementRef): Promise<{ x: number; y: number; cx: number; cy: number }> {
-    let quad: number[];
+    const oopifOwner = el.frame.session.kind === "iframe" ? el.frame.owner : undefined;
+    // OOPIF: 先に埋め込み元 <iframe> を親側で表示領域に入れておく
+    if (oopifOwner) await this.absoluteBox({ backendNodeId: oopifOwner.backendNodeId, frame: oopifOwner.frame });
     try {
       await this.send(el.frame.session, "DOM.scrollIntoViewIfNeeded", { backendNodeId: el.backendNodeId });
-      ({ model: { content: quad } } = await this.send(el.frame.session, "DOM.getBoxModel", { backendNodeId: el.backendNodeId }));
     } catch (e) {
       throw new HelperError("STALE_REF", `element no longer exists or has no box: ${(e as Error).message}`);
     }
-    let x = Math.min(quad[0], quad[6]), y = Math.min(quad[1], quad[3]);
-    let cx = (quad[0] + quad[2] + quad[4] + quad[6]) / 4, cy = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
-    // OOPIF の座標はそのフレームの viewport 基準なので、埋め込み元 <iframe> の位置を足す
-    if (el.frame.session.kind === "iframe" && el.frame.owner) {
-      const o = await this.absoluteBox({ backendNodeId: el.frame.owner.backendNodeId, frame: el.frame.owner.frame });
-      const inset = await this.frameInset(el.frame.owner);
-      x += o.x + inset.x; y += o.y + inset.y; cx += o.x + inset.x; cy += o.y + inset.y;
+    // 子フレーム内の scrollIntoView は親のスクロールも非同期に動かすので、位置が落ち着くまで読み直す
+    let last = "";
+    for (let i = 0; i < 10; i++) {
+      const box = await this.viewportBox(el);
+      const owner = oopifOwner ? await this.absoluteBoxNoScroll({ backendNodeId: oopifOwner.backendNodeId, frame: oopifOwner.frame }) : { x: 0, y: 0 };
+      const key = JSON.stringify([box, owner]);
+      if (key === last) return { x: box.x + owner.x, y: box.y + owner.y, cx: box.cx + owner.x, cy: box.cy + owner.y };
+      last = key;
+      await sleep(30);
     }
-    return { x, y, cx, cy };
+    throw new HelperError("TIMEOUT", "element position did not settle");
   }
 
-  /** <iframe> の content box 左上から実際の描画領域までのずれ (border/padding は content 外なので通常 0) */
-  private async frameInset(_owner: { frame: Frame; backendNodeId: number }): Promise<{ x: number; y: number }> {
-    return { x: 0, y: 0 };
+  /** スクロールせずに絶対座標を求める (入れ子 OOPIF 用の再帰) */
+  private async absoluteBoxNoScroll(el: ElementRef): Promise<{ x: number; y: number; cx: number; cy: number }> {
+    const box = await this.viewportBox(el);
+    const owner = el.frame.session.kind === "iframe" && el.frame.owner
+      ? await this.absoluteBoxNoScroll({ backendNodeId: el.frame.owner.backendNodeId, frame: el.frame.owner.frame })
+      : { x: 0, y: 0 };
+    return { x: box.x + owner.x, y: box.y + owner.y, cx: box.cx + owner.x, cy: box.cy + owner.y };
+  }
+
+  /**
+   * そのフレームの viewport 基準の位置。DOM.getContentQuads を使う
+   * (DOM.getBoxModel はスクロール量込みのドキュメント座標を返すので使わない)
+   */
+  private async viewportBox(el: ElementRef): Promise<{ x: number; y: number; cx: number; cy: number }> {
+    let quads: number[][];
+    try {
+      ({ quads } = await this.send(el.frame.session, "DOM.getContentQuads", { backendNodeId: el.backendNodeId }));
+    } catch (e) {
+      throw new HelperError("STALE_REF", `element no longer exists or has no box: ${(e as Error).message}`);
+    }
+    const q = quads[0];
+    if (!q) throw new HelperError("UNSUPPORTED", "element is not rendered (no content quads)");
+    return {
+      x: Math.min(q[0], q[6]), y: Math.min(q[1], q[3]),
+      cx: (q[0] + q[2] + q[4] + q[6]) / 4, cy: (q[1] + q[3] + q[5] + q[7]) / 4,
+    };
   }
 
   private async callOn(el: ElementRef, fn: string, args: unknown[] = []): Promise<any> {
@@ -422,11 +485,74 @@ export class BrowserBackend implements Backend {
     return { pngBase64: data };
   }
 
-  async observe(): Promise<{ subscription: string; notifications: string[] }> {
-    throw new HelperError("UNSUPPORTED", "event subscriptions are not available for browser tabs yet; use cu_wait");
+  // MARK: イベント購読
+
+  /** 開いている JS ダイアログ (alert / confirm / prompt / beforeunload)。開いている間はページ操作がブロックされる */
+  dialog(target: string): OpenDialog | undefined { return this.openDialogs.get(this.targetIdOf(target)); }
+
+  async handleDialog(target: string, accept: boolean, promptText?: string): Promise<string> {
+    const s = await this.session(this.targetIdOf(target));
+    const d = this.openDialogs.get(s.targetId);
+    if (!d) throw new HelperError("NOT_FOUND", "no open dialog on this tab");
+    await this.send(s, "Page.handleJavaScriptDialog", { accept, ...(promptText !== undefined ? { promptText } : {}) });
+    this.openDialogs.delete(s.targetId);
+    return `${accept ? "accepted" : "dismissed"} ${d.type}: ${d.message}`;
   }
-  async unobserve(subscription: string): Promise<void> { throw new HelperError("NOT_FOUND", `subscription ${subscription}`); }
-  events() { return []; }
+
+  async observe(target: string, notifications?: string[]): Promise<{ subscription: string; notifications: string[] }> {
+    const conn = await this.connection();
+    const s = await this.session(this.targetIdOf(target));
+    const wanted = new Set(notifications ?? DEFAULT_BROWSER_NOTIFICATIONS);
+    const unknown = [...wanted].filter((n) => !(BROWSER_NOTIFICATIONS as readonly string[]).includes(n));
+    if (unknown.length) throw new HelperError("INVALID_PARAMS", `unknown browser notifications: ${unknown.join(", ")} (known: ${BROWSER_NOTIFICATIONS.join(", ")})`);
+    if (wanted.has("console") || wanted.has("consoleError") || wanted.has("exception")) await this.send(s, "Runtime.enable");
+    if ((wanted.has("tabCreated") || wanted.has("tabDestroyed") || wanted.has("tabInfoChanged")) && !this.targetsDiscovered) {
+      await conn.send("Target.setDiscoverTargets", { discover: true });
+      this.targetsDiscovered = true;
+    }
+
+    const sub: BrowserSubscription = { id: `w${++this.subscriptionCounter}`, targetId: s.targetId, notifications: wanted, off: [] };
+    const target_ = `tab:${s.targetId}`;
+    const push = (notification: string, title?: string, value?: unknown, targetOverride?: string) => {
+      if (!wanted.has(notification)) return;
+      this.eventBuffer.push({ subscription: sub.id, notification, element: { title, value }, time: Date.now() / 1000, target: targetOverride ?? target_ });
+      if (this.eventBuffer.length > MAX_EVENTS) this.eventBuffer.splice(0, this.eventBuffer.length - MAX_EVENTS);
+    };
+    const mine = (sid?: string) => sid === s.sessionId;
+    const on = (event: string, handler: (p: any, sid?: string) => void) => sub.off.push(conn.on(event, handler));
+
+    on("Page.frameNavigated", (p, sid) => { if (mine(sid) && !p.frame.parentId) push("navigated", p.frame.url, p.frame.unreachableUrl ? { unreachable: true } : undefined); });
+    on("Page.loadEventFired", (_p, sid) => { if (mine(sid)) push("loaded"); });
+    on("Page.domContentEventFired", (_p, sid) => { if (mine(sid)) push("domContentLoaded"); });
+    on("Page.javascriptDialogOpening", (p, sid) => { if (mine(sid)) push("dialogOpened", p.message, { type: p.type, defaultPrompt: p.defaultPrompt, hint: "use cu_dialog to accept or dismiss" }); });
+    on("Page.javascriptDialogClosed", (p, sid) => { if (mine(sid)) push("dialogClosed", undefined, { result: p.result, userInput: p.userInput }); });
+    on("Runtime.consoleAPICalled", (p, sid) => {
+      if (!mine(sid)) return;
+      const text = (p.args ?? []).map((a: any) => a.value !== undefined ? String(a.value) : a.description ?? a.type).join(" ").slice(0, 300);
+      push("console", text, { level: p.type });
+      if (p.type === "error" || p.type === "warning" || p.type === "assert") push("consoleError", text, { level: p.type });
+    });
+    on("Runtime.exceptionThrown", (p, sid) => {
+      if (!mine(sid)) return;
+      const d = p.exceptionDetails;
+      push("exception", (d.exception?.description ?? d.text ?? "").split("\n")[0].slice(0, 300), { url: d.url, line: d.lineNumber });
+    });
+    on("Target.targetCreated", (p) => { if (p.targetInfo.type === "page") push("tabCreated", p.targetInfo.url, undefined, `tab:${p.targetInfo.targetId}`); });
+    on("Target.targetDestroyed", (p) => push("tabDestroyed", undefined, undefined, `tab:${p.targetId}`));
+    on("Target.targetInfoChanged", (p) => { if (p.targetInfo.type === "page") push("tabInfoChanged", p.targetInfo.title, { url: p.targetInfo.url }, `tab:${p.targetInfo.targetId}`); });
+
+    this.subscriptions.set(sub.id, sub);
+    return { subscription: sub.id, notifications: [...wanted] };
+  }
+
+  async unobserve(subscription: string): Promise<void> {
+    const sub = this.subscriptions.get(subscription);
+    if (!sub) throw new HelperError("NOT_FOUND", `subscription ${subscription}`);
+    for (const off of sub.off) off();
+    this.subscriptions.delete(subscription);
+  }
+
+  events(): UIEvent[] { const out = this.eventBuffer; this.eventBuffer = []; return out; }
 
   async dispose(): Promise<void> {
     this.conn?.close();

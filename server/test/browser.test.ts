@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { BrowserBackend } from "../src/backends/browser/BrowserBackend.js";
+import { BrowserBackend, DEFAULT_BROWSER_NOTIFICATIONS } from "../src/backends/browser/BrowserBackend.js";
 import { readFileSync } from "node:fs";
 import { parseRef } from "../src/core/refs.js";
 
@@ -121,10 +121,11 @@ describe.skipIf(!haveChrome)("BrowserBackend", () => {
 
   test("clicking an off-screen element scrolls it into view", async () => {
     const s = await backend.snapshot(tab);
-    await backend.click(refOf(s, 'button "Far away button"'), {});
-    const attrs = await backend.attributes(refOf(s, 'button "Far away button"'));
-    const rect = attrs.rect as { y: number };
-    expect(rect.y).toBeLessThan(1000);
+    const far = refOf(s, 'button "Far away button"');
+    await backend.click(far, {});
+    const attrs = await backend.attributes(far);
+    expect((attrs.rect as { y: number }).y).toBeLessThan(1000);
+    expect(attrs.text).toBe("Far away clicked");   // スクロール後の座標でクリックが当たっている
   });
 
   test("key events reach the page", async () => {
@@ -185,6 +186,52 @@ describe.skipIf(!haveChrome)("BrowserBackend", () => {
     // find もフレームを跨ぐ
     const f = await backend.find(t2, { role: "button", title: "Inner button" });
     expect(f.text.split("\n").filter((l) => l.includes('button "Inner button"')).length).toBe(2);
+  });
+
+  test("events: navigation, load, console, exception, dialogs, tabs; unobserve stops them", async () => {
+    const line = await backend.navigate("new", "about:blank");
+    const t3 = line.split("\t")[0];
+    const { subscription, notifications } = await backend.observe(t3, [...DEFAULT_BROWSER_NOTIFICATIONS, "console"]);
+    expect(subscription).toMatch(/^w\d+$/);
+    expect(notifications).toContain("navigated");
+    await expect(backend.observe(t3, ["nope"])).rejects.toMatchObject({ kind: "INVALID_PARAMS" });
+
+    await backend.navigate(t3, fixture);
+    const names = () => backend.events().map((e) => [e.notification, e.element.title] as const);
+    const afterNav = names();
+    expect(afterNav.some(([n, t]) => n === "navigated" && t === fixture)).toBe(true);
+    expect(afterNav.some(([n]) => n === "loaded")).toBe(true);
+
+    const s = await (backend as any).session(t3.slice(4));
+    await (backend as any).send(s, "Runtime.evaluate", { expression: "console.error('bad thing'); console.log('plain'); setTimeout(() => { throw new Error('boom') }, 0)" });
+    await new Promise((r) => setTimeout(r, 200));
+    const afterConsole = names();
+    expect(afterConsole.some(([n, t]) => n === "consoleError" && t === "bad thing")).toBe(true);
+    expect(afterConsole.some(([n, t]) => n === "console" && t === "plain")).toBe(true);
+    expect(afterConsole.some(([n, t]) => n === "exception" && t?.includes("boom"))).toBe(true);
+
+    // alert はページをブロックするので evaluate を待たずにダイアログを処理する
+    const pending = (backend as any).send(s, "Runtime.evaluate", { expression: "alert('hello dialog'); 42", returnByValue: true });
+    for (let i = 0; i < 30 && !backend.dialog(t3); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(backend.dialog(t3)).toMatchObject({ type: "alert", message: "hello dialog" });
+    expect(names().some(([n, t]) => n === "dialogOpened" && t === "hello dialog")).toBe(true);
+    expect(await backend.handleDialog(t3, true)).toContain("accepted alert");
+    expect((await pending).result.value).toBe(42);
+    expect(names().some(([n]) => n === "dialogClosed")).toBe(true);
+    await expect(backend.handleDialog(t3, true)).rejects.toMatchObject({ kind: "NOT_FOUND" });
+
+    const extra = (await backend.navigate("new", "about:blank")).split("\t")[0];
+    await backend.navigate(extra, "close");
+    await new Promise((r) => setTimeout(r, 200));
+    const tabEvents = names();
+    expect(tabEvents.some(([n]) => n === "tabCreated")).toBe(true);
+    expect(tabEvents.some(([n]) => n === "tabDestroyed")).toBe(true);
+
+    await backend.unobserve(subscription);
+    await expect(backend.unobserve(subscription)).rejects.toMatchObject({ kind: "NOT_FOUND" });
+    await backend.navigate(t3, "about:blank");
+    expect(backend.events()).toEqual([]);
+    await backend.navigate(t3, "close");
   });
 
   test("unknown snapshot id", async () => {
