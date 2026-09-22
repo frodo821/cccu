@@ -1,0 +1,26 @@
+#!/bin/sh
+# MCP サーバーの起動ラッパー。ビルド成果物 (Swift ヘルパー / TS バンドル) が無ければその場で作ってから起動する。
+# ログは stderr のみに出す (stdout は MCP のプロトコル用)。
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+HELPER="$ROOT/ax_helpers/macos/.build/release/cccu-helper"
+BUNDLE="$ROOT/server/dist/index.js"
+log() { echo "[cccu] $*" >&2; }
+
+need() { command -v "$1" >/dev/null 2>&1 || { log "missing '$1' — $2"; exit 1; }; }
+
+if [ ! -x "$HELPER" ]; then
+  need swift "install Xcode Command Line Tools (xcode-select --install)"
+  log "building macOS helper (first run, ~30s)..."
+  (cd "$ROOT/ax_helpers/macos" && swift build -c release 2>&1 | tail -3 >&2)
+fi
+
+if [ ! -f "$BUNDLE" ] || [ -n "$(find "$ROOT/server/src" -newer "$BUNDLE" -name '*.ts' 2>/dev/null | head -1)" ]; then
+  need bun "install bun (https://bun.sh)"
+  log "building server bundle..."
+  (cd "$ROOT/server" && { [ -d node_modules ] || bun install --silent; } && bun run build >/dev/null 2>&1)
+fi
+
+need node "install Node.js 22+"
+export CCCU_HELPER_PATH="${CCCU_HELPER_PATH:-$HELPER}"
+exec node "$BUNDLE"

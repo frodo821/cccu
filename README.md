@@ -9,9 +9,11 @@ Claude Code plugin that drives Chrome and macOS apps through their **accessibili
 ## Build
 
 ```sh
-(cd ax_helpers/macos && swift build -c release)
-(cd server && bun install && bun run build)
+make setup            # swift build + bun install + bundle
 ```
+
+The MCP entry point `bin/cccu-server` also builds anything missing on first start, so `claude --plugin-dir .`
+works on a fresh checkout as long as `swift`, `bun` and `node` are installed.
 
 ## Test
 
