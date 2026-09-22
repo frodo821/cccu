@@ -6,7 +6,21 @@ Claude Code plugin that drives Chrome and macOS apps through their **accessibili
 - `ax_helpers/macos/` — Swift helper speaking the JSON-RPC protocol in `docs/PROTOCOL.md` over stdio.
 - `docs/DESIGN.md` — architecture and milestones. `docs/PROTOCOL.md` — the helper contract.
 
-## Build
+## Install
+
+```sh
+claude plugin marketplace add frodo821/cccu
+claude plugin install cccu@cccu
+```
+
+Or, from a checkout: `make install` (from GitHub) / `make install-local` (this directory). Update with
+`make update` (`claude plugin marketplace update cccu && claude plugin update cccu@cccu`), remove with `make uninstall`,
+inspect with `make status`. Restart Claude Code after installing or updating.
+
+Requirements on the machine: `swift` (Xcode Command Line Tools), `bun`, `node` 22+. The helper and server bundle are
+built on the first tool call.
+
+## Build (development)
 
 ```sh
 make setup            # swift build + bun install + bundle

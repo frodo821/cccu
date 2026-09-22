@@ -1,0 +1,76 @@
+#!/bin/sh
+# cccu プラグインのインストール / 更新 / 削除 / 状態確認。
+#   bin/cccu install [--local]   GitHub (既定) またはこのチェックアウトからインストール
+#   bin/cccu update              マーケットプレイスとプラグインを最新にする
+#   bin/cccu uninstall           プラグインとマーケットプレイスを外す
+#   bin/cccu status              インストール状況とビルド状況
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MARKET="cccu"
+PLUGIN="cccu"
+REPO="${CCCU_REPO:-frodo821/cccu}"
+SCOPE="${CCCU_SCOPE:-user}"
+
+# `claude` はエイリアスの場合があるので実体を探す
+find_claude() {
+  for c in "$(command -v claude 2>/dev/null)" "$HOME/.local/bin/claude" "$HOME/.claude/local/claude" /opt/homebrew/bin/claude /usr/local/bin/claude; do
+    [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return; }
+  done
+  echo "cccu: claude CLI not found" >&2; exit 1
+}
+CLAUDE="$(find_claude)"
+
+has_marketplace() { "$CLAUDE" plugin marketplace list 2>/dev/null | grep -q "^ *$MARKET\b\|❯ $MARKET\b\|^$MARKET\b"; }
+has_plugin() { "$CLAUDE" plugin list 2>/dev/null | grep -q "$PLUGIN@$MARKET"; }
+
+cmd_install() {
+  local source="$REPO"
+  [ "$1" = "--local" ] && source="$ROOT"
+  if has_marketplace; then
+    echo "marketplace '$MARKET' already added; refreshing"
+    "$CLAUDE" plugin marketplace update "$MARKET"
+  else
+    echo "adding marketplace from $source"
+    "$CLAUDE" plugin marketplace add "$source"
+  fi
+  if has_plugin; then
+    echo "plugin already installed; updating instead"
+    "$CLAUDE" plugin update "$PLUGIN@$MARKET"
+  else
+    "$CLAUDE" plugin install "$PLUGIN@$MARKET" --scope "$SCOPE"
+  fi
+  echo
+  echo "Installed. Restart Claude Code, then try: cu_status / cu_targets."
+  echo "The Swift helper and server bundle are built on the first tool call (needs swift, bun, node)."
+}
+
+cmd_update() {
+  has_marketplace || { echo "marketplace '$MARKET' is not added; run: bin/cccu install" >&2; exit 1; }
+  "$CLAUDE" plugin marketplace update "$MARKET"
+  "$CLAUDE" plugin update "$PLUGIN@$MARKET"
+  echo "Updated. Restart Claude Code to apply."
+}
+
+cmd_uninstall() {
+  has_plugin && "$CLAUDE" plugin uninstall "$PLUGIN@$MARKET" || echo "plugin not installed"
+  has_marketplace && "$CLAUDE" plugin marketplace remove "$MARKET" || echo "marketplace not added"
+}
+
+cmd_status() {
+  echo "claude: $CLAUDE ($("$CLAUDE" --version 2>/dev/null | head -1))"
+  echo "marketplace: $(has_marketplace && echo added || echo 'not added')"
+  echo "plugin: $(has_plugin && echo installed || echo 'not installed')"
+  "$CLAUDE" plugin list 2>/dev/null | grep -A3 "$PLUGIN@$MARKET" | sed 's/^/  /' || true
+  echo "checkout: $ROOT"
+  echo "  helper:  $([ -x "$ROOT/ax_helpers/macos/.build/release/cccu-helper" ] && echo built || echo 'not built')"
+  echo "  bundle:  $([ -f "$ROOT/server/dist/index.js" ] && echo built || echo 'not built')"
+  for t in swift bun node; do printf '  %-7s %s\n' "$t:" "$(command -v $t >/dev/null 2>&1 && $t --version 2>&1 | head -1 || echo missing)"; done
+}
+
+case "${1:-}" in
+  install) shift; cmd_install "$@" ;;
+  update) cmd_update ;;
+  uninstall|remove) cmd_uninstall ;;
+  status) cmd_status ;;
+  *) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

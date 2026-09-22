@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "cccu",
+  "description": "cccu: drive Chrome and macOS apps through their accessibility trees from Claude Code",
+  "owner": { "name": "frodo821" },
+  "plugins": [
+    {
+      "name": "cccu",
+      "source": "./",
+      "description": "Accessibility-tree computer use: snapshot, find, click, type, events for macOS apps and Chrome tabs",
+      "category": "productivity"
+    }
+  ]
+}
