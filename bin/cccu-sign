@@ -9,7 +9,15 @@ ID="dev.frodo821.cccu-helper"
 
 have_cert() { security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$NAME\""; }
 
-if ! have_cert; then
+apple_identity() {
+  security find-identity -v -p codesigning 2>/dev/null \
+    | grep -E '"(Developer ID Application|Apple Development): ' | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# 自己署名証明書は Apple の identity が無いときだけ作る。
+# trust 設定 (add-trusted-cert) は管理者認証のダイアログを出すので、CI や非対話環境では行わない
+ensure_self_signed() {
+  have_cert && return 0
   echo "[cccu] creating self-signed code-signing certificate '$NAME' in the login keychain" >&2
   tmp="$(mktemp -d)"
   cat > "$tmp/ext.cnf" <<CNF
@@ -27,24 +35,21 @@ CNF
   openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout "$tmp/key.pem" -out "$tmp/cert.pem" -config "$tmp/ext.cnf" >/dev/null 2>&1
   openssl pkcs12 -export -inkey "$tmp/key.pem" -in "$tmp/cert.pem" -out "$tmp/cert.p12" -passout pass:cccu -name "$NAME" >/dev/null 2>&1
   security import "$tmp/cert.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P cccu -T /usr/bin/codesign -T /usr/bin/security >/dev/null
-  # 自己署名証明書を codesign が使えるようにする (ユーザーの信頼設定に追加; パスワードを求められることがある)
-  security add-trusted-cert -p codeSign -k "$HOME/Library/Keychains/login.keychain-db" "$tmp/cert.pem" 2>/dev/null || true
+  if [ -z "${CI:-}" ] && [ -t 0 ]; then
+    security add-trusted-cert -p codeSign -k "$HOME/Library/Keychains/login.keychain-db" "$tmp/cert.pem" 2>/dev/null || true
+  fi
   rm -rf "$tmp"
-fi
+}
 
 # 署名 ID の選択:
 #   1. CCCU_SIGN_IDENTITY (明示指定)
 #   2. Apple 発行の証明書 (Developer ID Application / Apple Development)。macOS Sequoia 以降、画面収録 (ScreenCaptureKit) は
 #      Team ID 付きの Apple 証明書で署名されたバイナリにしか許可されないため、あればこちらを使う
 #   3. 自己署名 (Accessibility は動くが画面収録は不可)
-apple_identity() {
-  security find-identity -v -p codesigning 2>/dev/null \
-    | grep -E '"(Developer ID Application|Apple Development): ' | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
-}
 IDENTITY="${CCCU_SIGN_IDENTITY:-$(apple_identity)}"
 if [ -n "$IDENTITY" ] && codesign --force --sign "$IDENTITY" --identifier "$ID" --options runtime --timestamp=none "$BIN" 2>/dev/null; then
   echo "[cccu] signed $BIN with '$IDENTITY' (Team ID present: screen recording available)" >&2
-elif have_cert && codesign --force --sign "$NAME" --identifier "$ID" "$BIN" 2>/dev/null; then
+elif ensure_self_signed && codesign --force --sign "$NAME" --identifier "$ID" "$BIN" 2>/dev/null; then
   echo "[cccu] signed $BIN with self-signed certificate '$NAME' (no Team ID: desktop screenshots will be unavailable on macOS 15+)" >&2
 else
   echo "[cccu] no certificate; falling back to ad-hoc signature (permissions will not survive rebuilds)" >&2
