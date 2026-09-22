@@ -11,7 +11,7 @@
       "source": "./",
       "description": "Accessibility-tree computer use: snapshot, find, click, type, events for macOS apps and Chrome tabs",
       "category": "productivity",
-      "version": "0.2.0"
+      "version": "0.2.1"
     }
   ]
 }

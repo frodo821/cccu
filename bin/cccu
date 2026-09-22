@@ -4,6 +4,7 @@
 #   bin/cccu update              マーケットプレイスとプラグインを最新にする
 #   bin/cccu uninstall           プラグインとマーケットプレイスを外す
 #   bin/cccu status              インストール状況とビルド状況
+#   bin/cccu permissions         macOS の権限 (Accessibility / Screen Recording) を要求して付与を待つ
 #   bin/cccu bump <version>      リリース用: plugin.json / package.json / marketplace.json の version を揃える
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,6 +25,52 @@ CLAUDE="$(find_claude)"
 has_marketplace() { "$CLAUDE" plugin marketplace list 2>/dev/null | grep -q "^ *$MARKET\b\|❯ $MARKET\b\|^$MARKET\b"; }
 has_plugin() { "$CLAUDE" plugin list 2>/dev/null | grep -q "$PLUGIN@$MARKET"; }
 
+install_path() {
+  python3 - "$PLUGIN@$MARKET" <<'PY' 2>/dev/null
+import json, os, sys
+d = json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))
+print(d["plugins"][sys.argv[1]][0]["installPath"])
+PY
+}
+
+# 権限セットアップ。TCC は LaunchServices 経由で起動したアプリにしかプロンプトを出さないので、
+# ヘルパー (.app) を open で起動し、出力をログファイル経由で待つ。付与後は通常の spawn 起動でも権限が通る
+run_permission_setup() {
+  local app="$1"; shift
+  local log; log="$(mktemp -t cccu-perm)"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
+  open -n -a "$app" --env CCCU_NO_DISCLAIM=1 --stdout "$log" --stderr "$log" --args --setup-permissions "$@" || {
+    echo "cccu: could not launch $app" >&2; return 1; }
+  local shown=0
+  for _ in $(seq 1 400); do
+    sleep 0.5
+    local lines; lines="$(wc -l < "$log" | tr -d ' ')"
+    if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" "$log"; shown="$lines"; fi
+    if grep -qE '^(all set|still missing)' "$log"; then break; fi
+  done
+  grep -q '^all set' "$log"
+}
+
+# インストール先 (キャッシュ) のヘルパーをビルドし、macOS なら権限を一通り要求する
+post_install() {
+  [ "$(uname)" = "Darwin" ] || return 0
+  local dir; dir="$(install_path)"
+  [ -n "$dir" ] && [ -x "$dir/bin/cccu-server" ] || { echo "cccu: cannot find installed plugin to set up" >&2; return 0; }
+  echo "building helper in $dir …"
+  "$dir/bin/cccu-server" --build
+  echo
+  run_permission_setup "$dir/ax_helpers/macos/.build/release/cccu-helper.app" "$@" || true
+}
+
+cmd_permissions() {
+  [ "$(uname)" = "Darwin" ] || { echo "not macOS"; exit 0; }
+  local dir; dir="$(install_path)"
+  local app="$dir/ax_helpers/macos/.build/release/cccu-helper.app"
+  [ -d "$app" ] || app="$ROOT/ax_helpers/macos/.build/release/cccu-helper.app"
+  [ -d "$app" ] || { echo "helper not built; run: bin/cccu install (or make release)" >&2; exit 1; }
+  run_permission_setup "$app" "$@"
+}
+
 cmd_install() {
   local source="$REPO"
   [ "$1" = "--local" ] && source="$ROOT"
@@ -40,15 +87,16 @@ cmd_install() {
   else
     "$CLAUDE" plugin install "$PLUGIN@$MARKET" --scope "$SCOPE"
   fi
+  post_install
   echo
   echo "Installed. Restart Claude Code, then try: cu_status / cu_targets."
-  echo "The Swift helper and server bundle are built on the first tool call (needs swift, bun, node)."
 }
 
 cmd_update() {
   has_marketplace || { echo "marketplace '$MARKET' is not added; run: bin/cccu install" >&2; exit 1; }
   "$CLAUDE" plugin marketplace update "$MARKET"
   "$CLAUDE" plugin update "$PLUGIN@$MARKET"
+  post_install
   echo "Updated. Restart Claude Code to apply."
 }
 
@@ -63,7 +111,7 @@ cmd_status() {
   echo "plugin: $(has_plugin && echo installed || echo 'not installed')"
   "$CLAUDE" plugin list 2>/dev/null | grep -A3 "$PLUGIN@$MARKET" | sed 's/^/  /' || true
   echo "checkout: $ROOT"
-  echo "  helper:  $([ -x "$ROOT/ax_helpers/macos/.build/release/cccu-helper" ] && echo built || echo 'not built')"
+  echo "  helper:  $([ -x "$ROOT/ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper" ] && echo built || echo 'not built')"
   echo "  bundle:  $([ -f "$ROOT/server/dist/index.js" ] && echo built || echo 'not built')"
   for t in swift bun node; do printf '  %-7s %s\n' "$t:" "$(command -v $t >/dev/null 2>&1 && $t --version 2>&1 | head -1 || echo missing)"; done
 }
@@ -91,6 +139,7 @@ case "${1:-}" in
   update) cmd_update ;;
   uninstall|remove) cmd_uninstall ;;
   status) cmd_status ;;
+  permissions) shift; cmd_permissions "$@" ;;
   bump) cmd_bump "$2" ;;
-  *) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -12,7 +12,7 @@ public func registerScreenMethods(_ d: Dispatcher) {
             _ = CGRequestScreenCaptureAccess()
             throw HelperError(.notTrusted, "Screen Recording not permitted",
                               data: ["permission": "screenRecording",
-                                     "hint": "System Settings > Privacy & Security > Screen Recording: allow the app that launched Claude Code"])
+                                     "hint": "System Settings > Privacy & Security > Screen Recording: allow \"cccu-helper\" (no terminal restart needed)"])
         }
         let maxWidth = p.optInt("maxWidth") ?? 1600
         let image: CGImage

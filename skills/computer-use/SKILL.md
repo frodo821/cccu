@@ -36,6 +36,6 @@ Screenshots
 
 Rules
 - Never guess refs. If an element is missing from the snapshot, snapshot again or `cu_find` it.
-- If a tool returns `NOT_TRUSTED`, tell the user to grant Accessibility permission to the app hosting Claude Code (Terminal, iTerm, VS Code, ...) and stop.
+- If a tool returns `NOT_TRUSTED`, tell the user to allow "cccu-helper" in System Settings > Privacy & Security (Accessibility, or Screen Recording for desktop screenshots). No restart is needed; retry the tool once they have done it.
 - Do not perform irreversible actions (send, delete, purchase, save over a file) without confirming with the user first.
 - Button titles follow the system language (e.g. 削除 vs Delete); read them from the snapshot rather than assuming English.

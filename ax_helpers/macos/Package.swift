@@ -14,7 +14,9 @@ let package = Package(
         .executableTarget(
             name: "cccu-helper",
             dependencies: ["CCCUHelperCore"],
-            path: "Sources/cccu-helper"
+            path: "Sources/cccu-helper",
+            // CLI バイナリに Info.plist を埋め込む (TCC のダイアログ / 設定画面での名前と識別子)
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Info.plist"])]
         ),
         .testTarget(
             name: "CCCUHelperCoreTests",

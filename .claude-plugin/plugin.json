@@ -2,7 +2,7 @@
   "name": "cccu",
   "displayName": "Computer Use (accessibility tree)",
   "description": "Drive Chrome and macOS apps through their accessibility trees: snapshot, find, click, type.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {
     "name": "csakai"
   },

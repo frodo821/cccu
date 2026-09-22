@@ -30,3 +30,6 @@ uninstall:
 
 status:
 	bin/cccu status
+
+permissions:          ## macOS: request Accessibility / Screen Recording for the helper
+	bin/cccu permissions

@@ -29,7 +29,9 @@ export interface HelloResult {
   protocolVersion: string;
   helperVersion: string;
   platform: string;
-  trusted: boolean;
+  trusted: boolean;            // Accessibility
+  screenRecording?: boolean;   // v1.3
+  responsible?: boolean;       // v1.3: ヘルパー自身が TCC の責任プロセスか
   capabilities: string[];
 }
 

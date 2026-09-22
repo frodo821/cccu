@@ -44,6 +44,9 @@ export class DesktopBackend implements Backend {
   }
 
   async listTargets(): Promise<TargetInfo[]> {
+    return this.withPermissionRetry(() => this.listTargetsOnce());
+  }
+  private async listTargetsOnce(): Promise<TargetInfo[]> {
     const h = await this.helper();
     const { apps } = await h.call("app.list", {});
     const { windows } = await h.call("window.list", {});
@@ -68,7 +71,7 @@ export class DesktopBackend implements Backend {
 
   async snapshot(target: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     const { within, ...rest } = opts;
-    return (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within), ...rest });
+    return this.withPermissionRetry(async () => (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within), ...rest }));
   }
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within), query, maxNodes: opts.maxNodes });
@@ -101,12 +104,45 @@ export class DesktopBackend implements Backend {
     await (await this.helper()).call("ui.performAction", { ref, action });
   }
   async screenshot(target: string, opts: { maxWidth?: number } = {}) {
+    return this.withPermissionRetry(async () => {
+      const h = await this.helper();
+      if (!h.has("screen.capture")) throw new HelperError("UNSUPPORTED", "helper does not support screen.capture (rebuild ax_helpers/macos)");
+      const t = await this.resolveTarget(target);
+      const params = t.kind === "window" ? { pid: t.pid, windowNumber: t.windowNumber } : t.kind === "app" ? { pid: t.pid } : {};
+      const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth });
+      return { pngBase64: r.pngBase64, width: r.width, height: r.height };
+    });
+  }
+
+  /**
+   * 権限 (Accessibility / Screen Recording) は付与後、責任プロセスの再起動で有効になる。
+   * ヘルパーは自分自身が責任プロセスなので、NOT_TRUSTED のときは一度だけ再起動して再試行する。
+   */
+  private async withPermissionRetry<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof HelperError) || e.kind !== "NOT_TRUSTED") throw e;
+      await this.client?.stop();
+      this.client = null;
+      try {
+        return await fn();
+      } catch (e2) {
+        if (e2 instanceof HelperError && e2.kind === "NOT_TRUSTED") {
+          throw new HelperError("NOT_TRUSTED", e2.message, {
+            ...e2.data,
+            hint: `Grant the permission to "cccu-helper" in System Settings > Privacy & Security; no restart of the terminal is needed, the helper restarts itself. ${e2.data.hint ?? ""}`.trim(),
+          });
+        }
+        throw e2;
+      }
+    }
+  }
+
+  /** 権限状態 (cu_status 用) */
+  async permissions(): Promise<{ accessibility: boolean; screenRecording?: boolean; responsibleProcess?: boolean }> {
     const h = await this.helper();
-    if (!h.has("screen.capture")) throw new HelperError("UNSUPPORTED", "helper does not support screen.capture (rebuild ax_helpers/macos)");
-    const t = await this.resolveTarget(target);
-    const params = t.kind === "window" ? { pid: t.pid, windowNumber: t.windowNumber } : t.kind === "app" ? { pid: t.pid } : {};
-    const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth });
-    return { pngBase64: r.pngBase64, width: r.width, height: r.height };
+    return { accessibility: h.info.trusted, screenRecording: h.info.screenRecording, responsibleProcess: h.info.responsible };
   }
   async observe(target: string, notifications?: string[]) {
     const h = await this.helper();

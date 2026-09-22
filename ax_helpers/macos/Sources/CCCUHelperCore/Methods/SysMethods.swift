@@ -1,5 +1,6 @@
 import Foundation
 import ApplicationServices
+import CoreGraphics
 
 public let protocolVersion = "1.3"
 public let helperVersion = "0.1.0"
@@ -24,6 +25,8 @@ public func registerSysMethods(_ d: Dispatcher, shutdown: @escaping () -> Void) 
             "helperVersion": helperVersion,
             "platform": "macos",
             "trusted": Trust.isTrusted,
+            "screenRecording": CGPreflightScreenCaptureAccess(),
+            "responsible": ProcessInfo.processInfo.environment[disclaimedEnv] != nil,
             "capabilities": d.capabilities,
         ] as JSONObject
     }

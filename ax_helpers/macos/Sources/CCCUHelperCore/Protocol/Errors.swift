@@ -55,6 +55,6 @@ public struct HelperError: Error {
     }
     public static var notTrusted: HelperError {
         HelperError(.notTrusted, "Accessibility not trusted",
-                    data: ["hint": "System Settings > Privacy & Security > Accessibility: allow the app that launched Claude Code (Terminal, iTerm, VS Code, ...)"])
+                    data: ["hint": "System Settings > Privacy & Security > Accessibility: allow \"cccu-helper\" (no terminal restart needed)"])
     }
 }

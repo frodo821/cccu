@@ -187,7 +187,14 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       const out: Record<string, unknown> = {};
       for (const b of ctx.backends) {
         if (b.kind === "browser") { out.browser = await ctx.browser.status(); continue; }
-        try { await b.listTargets(); out[b.kind] = "ok"; } catch (e) { out[b.kind] = e instanceof HelperError ? { error: e.message, ...e.data } : String(e); }
+        try {
+          const perms = await (b as any).permissions?.();
+          out.desktop = {
+            ...perms,
+            hint: perms?.accessibility ? undefined : 'Grant Accessibility to "cccu-helper" in System Settings > Privacy & Security (no terminal restart needed)',
+            screenRecordingHint: perms?.screenRecording ? undefined : 'Screenshots need Screen Recording for "cccu-helper" (System Settings > Privacy & Security > Screen Recording)',
+          };
+        } catch (e) { out[b.kind] = e instanceof HelperError ? { error: e.message, ...e.data } : String(e); }
       }
       return text(JSON.stringify(out, null, 2));
     }));

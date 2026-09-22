@@ -134,8 +134,8 @@ function resolveHelperPath(): string {
   // server/dist/index.js または server/src/backends/desktop/HelperClient.ts から repo root を辿る
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    resolve(here, "../../ax_helpers/macos/.build/release/cccu-helper"),          // dist/
-    resolve(here, "../../../../ax_helpers/macos/.build/release/cccu-helper"),    // src/backends/desktop/
+    resolve(here, "../../ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper"),          // dist/
+    resolve(here, "../../../../ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper"),    // src/backends/desktop/
   ];
   return candidates.find(existsSync) ?? candidates[0];
 }

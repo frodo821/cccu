@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>dev.frodo821.cccu-helper</string>
+  <key>CFBundleExecutable</key><string>cccu-helper</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSUIElement</key><true/>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>CFBundleName</key><string>cccu-helper</string>
+  <key>CFBundleDisplayName</key><string>cccu-helper</string>
+  <key>CFBundleShortVersionString</key><string>0.2.1</string>
+  <key>NSHumanReadableCopyright</key><string>cccu accessibility helper</string>
+</dict></plist>

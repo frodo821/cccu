@@ -1,0 +1,52 @@
+#!/bin/sh
+# ヘルパーを安定した身元で署名する。
+# ad-hoc 署名は cdhash (ビルドごとに変わる) で識別されるため、再ビルドで TCC の権限が失われ項目も増える。
+# ログインキーチェーンに自己署名のコード署名証明書 "cccu-helper" を 1 度だけ作り、それで署名する。
+set -e
+BIN="$1"; [ -n "$BIN" ] || { echo "usage: cccu-sign <binary>" >&2; exit 1; }
+NAME="cccu-helper"
+ID="dev.frodo821.cccu-helper"
+
+have_cert() { security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$NAME\""; }
+
+if ! have_cert; then
+  echo "[cccu] creating self-signed code-signing certificate '$NAME' in the login keychain" >&2
+  tmp="$(mktemp -d)"
+  cat > "$tmp/ext.cnf" <<CNF
+[req]
+distinguished_name = dn
+x509_extensions = ext
+prompt = no
+[dn]
+CN = $NAME
+[ext]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, codeSigning
+basicConstraints = critical, CA:false
+CNF
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout "$tmp/key.pem" -out "$tmp/cert.pem" -config "$tmp/ext.cnf" >/dev/null 2>&1
+  openssl pkcs12 -export -inkey "$tmp/key.pem" -in "$tmp/cert.pem" -out "$tmp/cert.p12" -passout pass:cccu -name "$NAME" >/dev/null 2>&1
+  security import "$tmp/cert.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P cccu -T /usr/bin/codesign -T /usr/bin/security >/dev/null
+  # 自己署名証明書を codesign が使えるようにする (ユーザーの信頼設定に追加; パスワードを求められることがある)
+  security add-trusted-cert -p codeSign -k "$HOME/Library/Keychains/login.keychain-db" "$tmp/cert.pem" 2>/dev/null || true
+  rm -rf "$tmp"
+fi
+
+# 署名 ID の選択:
+#   1. CCCU_SIGN_IDENTITY (明示指定)
+#   2. Apple 発行の証明書 (Developer ID Application / Apple Development)。macOS Sequoia 以降、画面収録 (ScreenCaptureKit) は
+#      Team ID 付きの Apple 証明書で署名されたバイナリにしか許可されないため、あればこちらを使う
+#   3. 自己署名 (Accessibility は動くが画面収録は不可)
+apple_identity() {
+  security find-identity -v -p codesigning 2>/dev/null \
+    | grep -E '"(Developer ID Application|Apple Development): ' | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
+}
+IDENTITY="${CCCU_SIGN_IDENTITY:-$(apple_identity)}"
+if [ -n "$IDENTITY" ] && codesign --force --sign "$IDENTITY" --identifier "$ID" --options runtime --timestamp=none "$BIN" 2>/dev/null; then
+  echo "[cccu] signed $BIN with '$IDENTITY' (Team ID present: screen recording available)" >&2
+elif have_cert && codesign --force --sign "$NAME" --identifier "$ID" "$BIN" 2>/dev/null; then
+  echo "[cccu] signed $BIN with self-signed certificate '$NAME' (no Team ID: desktop screenshots will be unavailable on macOS 15+)" >&2
+else
+  echo "[cccu] no certificate; falling back to ad-hoc signature (permissions will not survive rebuilds)" >&2
+  codesign --force --sign - --identifier "$ID" "$BIN"
+fi

@@ -63,7 +63,7 @@ Or talk to the helper by hand:
 
 ```sh
 printf '%s\n' '{"id":1,"method":"sys.hello","params":{}}' '{"id":2,"method":"app.list"}' \
-  | ax_helpers/macos/.build/release/cccu-helper
+  | ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper
 ```
 
 ## Status
@@ -95,4 +95,30 @@ open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$H
 `cu_navigate` to a new tab launches it automatically when nothing is connected. Endpoint: `CCCU_CDP_URL`
 (default `http://127.0.0.1:9222`). `cu_browser status` explains the current state either way.
 
-Accessibility permission must be granted to the app that launches Claude Code (Terminal, iTerm, VS Code, Claude Desktop). The helper inherits it as a child process.
+## Permissions
+
+The helper makes itself the responsible process for macOS privacy permissions, so they are granted to **cccu-helper**
+itself, once, and apply no matter which app launches Claude Code (Terminal, iTerm, VS Code, Claude Desktop):
+
+- **Accessibility** (required): the first tool call shows the system prompt; allow "cccu-helper".
+- **Screen Recording** (only for `cu_screenshot` on the desktop): allow "cccu-helper" under
+  System Settings > Privacy & Security > Screen Recording.
+
+`bin/cccu install` and `bin/cccu update` request both permissions at the end (`bin/cccu permissions` re-runs that
+step). The request is made by an instance of the helper launched through LaunchServices (`open -a`), because macOS
+only shows the Screen Recording prompt, and creates the System Settings entry, for apps launched that way; once
+granted, the normally spawned helper passes the check too. No terminal restart is needed after granting: the helper
+restarts itself and retries. `cu_status` shows both states.
+
+The helper is packaged as `cccu-helper.app` and signed by `bin/cccu-sign`, which picks the best identity available:
+
+1. `CCCU_SIGN_IDENTITY` if set;
+2. an Apple-issued certificate in your keychain (`Developer ID Application` or `Apple Development`; the free personal team
+   you get by signing into Xcode is enough). **macOS 15+ only grants Screen Recording to binaries signed with an
+   Apple certificate carrying a Team ID**, so this is what makes `cu_screenshot` work on the desktop;
+3. otherwise a self-signed certificate `cccu-helper` created once in your login keychain (macOS may ask for your
+   password to trust it). Accessibility works with it, desktop screenshots do not.
+
+Either way the identity is stable, so permissions survive rebuilds and updates. An ad-hoc signature would be keyed by
+the build hash instead, which is what causes duplicate "cccu-helper" entries in System Settings after every rebuild;
+delete such stale entries if you see them.
