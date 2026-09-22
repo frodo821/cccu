@@ -1,0 +1,21 @@
+{
+  "name": "@cccu/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server for cccu: accessibility-tree driven browser and desktop control",
+  "scripts": {
+    "build": "bun build src/index.ts --target=node --outfile dist/index.js",
+    "dev": "bun run src/index.ts",
+    "smoke": "bun run scripts/smoke.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5"
+  }
+}

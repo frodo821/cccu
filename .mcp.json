@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cu": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/index.js"],
+      "env": {
+        "CCCU_HELPER_PATH": "${CLAUDE_PLUGIN_ROOT}/ax_helpers/macos/.build/release/cccu-helper"
+      }
+    }
+  }
+}
