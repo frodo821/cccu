@@ -23,3 +23,4 @@ await server.connect(transport);
 const shutdown = async () => { await helper?.stop(); process.exit(0); };
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+process.stdin.on("end", shutdown);   // クライアントが stdin を閉じたらヘルパーごと終了する

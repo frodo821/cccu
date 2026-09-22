@@ -74,7 +74,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | method | params | result |
 |--------|--------|--------|
 | `app.list` | `{}` | `{apps: [{pid, name, bundleId?, frontmost, hidden}]}` |
-| `app.activate` | `{pid}` \| `{bundleId}` | `{pid}` — 未起動なら起動して待つ |
+| `app.activate` | `{pid}` \| `{bundleId}` | `{pid}` — 未起動なら起動して待つ。前面化は AXFrontmost 属性で行う (非 GUI プロセスからの NSRunningApplication.activate は macOS 14+ で無視される) |
 | `window.list` | `{pid?}` | `{windows: [{pid, windowNumber, title, frame: Rect, focused, minimized}]}` |
 | `window.raise` | `{pid, windowNumber}` | `{}` |
 
@@ -83,7 +83,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | method | params | result |
 |--------|--------|--------|
 | `ui.snapshot` | `{scope: Scope, maxDepth?: int, maxNodes?: int, interestingOnly?: boolean}` | `{snapshot: string, text: string, refCount: int, truncated: boolean}` |
-| `ui.find` | `{scope: Scope, query: FindQuery, maxResults?: int}` | `{snapshot, text, refCount}` — 一致要素とその祖先のみ |
+| `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int}` | `{snapshot, text, refCount}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ |
 | `ui.attributes` | `{ref: Ref, names?: string[]}` | `{attributes: {[AXName]: value}}` |
 | `ui.setAttribute` | `{ref: Ref, name: string, value: any}` | `{}` |
 | `ui.performAction` | `{ref: Ref, action: string}` | `{}` — `AXPress` など AX アクション名そのまま |
@@ -95,8 +95,8 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 | method | params | result |
 |--------|--------|--------|
-| `input.type` | `{ref?: Ref, text: string, clear?: boolean, submit?: boolean}` | `{}` |
-| `input.key` | `{key: string, modifiers?: Modifier[], pid?: int}` | `{}` — `key` は W3C `KeyboardEvent.key` 名 |
+| `input.type` | `{ref?: Ref, text: string, clear?: boolean, submit?: boolean}` | `{method: "selectedText"\|"value"\|"keys"}` — ref 省略時はフォーカス中の要素。AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順に試す |
+| `input.key` | `{key: string, modifiers?: Modifier[], pid?: int}` | `{}` — `key` は W3C `KeyboardEvent.key` 名。`pid` 指定時はそのアプリを前面にしてから送る |
 | `input.scroll` | `{ref?: Ref, point?: Point, dx: number, dy: number}` | `{}` |
 | `input.mouse` | `{point: Point, action: "move"\|"down"\|"up"\|"drag", to?: Point, button?: "left"\|"right"}` | `{}` |
 

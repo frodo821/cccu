@@ -20,5 +20,8 @@ public func makeDispatcher(shutdown: @escaping () -> Void) -> Dispatcher {
     let d = Dispatcher()
     registerSysMethods(d, shutdown: shutdown)
     registerAppMethods(d)
+    registerWindowMethods(d)
+    registerUIMethods(d)
+    registerInputMethods(d)
     return d
 }

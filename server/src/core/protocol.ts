@@ -56,7 +56,7 @@ export interface Methods {
     params: { scope: Scope; maxDepth?: number; maxNodes?: number; interestingOnly?: boolean };
     result: SnapshotResult;
   };
-  "ui.find": { params: { scope: Scope; query: FindQuery; maxResults?: number }; result: SnapshotResult };
+  "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number }; result: SnapshotResult };
   "ui.attributes": { params: { ref: Ref; names?: string[] }; result: { attributes: Record<string, unknown> } };
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
@@ -69,7 +69,7 @@ export interface Methods {
     params: { scope: Scope; condition: { exists: FindQuery } | { gone: FindQuery } | { stable: number }; timeoutMs: number };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean }; result: Record<string, never> };
+  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean }; result: { method: "selectedText" | "value" | "keys" } };
   "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number }; result: Record<string, never> };
   "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number }; result: Record<string, never> };
   "input.mouse": {

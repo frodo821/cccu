@@ -247,13 +247,19 @@ cccu/
 
 ## 8. マイルストーン
 
-1. **Protocol first**: `docs/PROTOCOL.md` と Swift 側 `Protocol/` (型 + ディスパッチ + `sys.hello`) + TS 側クライアント。`sys.hello` / `app.list` が往復するところまで
-2. Desktop: `ui.snapshot` → `ui.click` → `input.type` → `ui.find` の順で実装。TextEdit で「新規書類を開いて文字を打つ」を通す
+1. ✅ **Protocol first**: `docs/PROTOCOL.md` と Swift 側 `Protocol/` (型 + ディスパッチ + `sys.hello`) + TS 側クライアント。`sys.hello` / `app.list` が往復するところまで
+2. ✅ Desktop: `ui.snapshot` → `ui.click` → `input.type` → `ui.find` の順で実装。TextEdit で「新規書類を開いて文字を打つ」を通す (`make e2e`)
 3. Browser: CDP 接続 → snapshot → click/type。Chrome で「検索して結果をクリック」を通す
 4. MCP ツール層 + SKILL.md + plugin.json、`claude --plugin-dir` で動作確認
 5. `ui.waitFor`、screenshot、ヘルパーのビルド配布 (プラグインインストール時に `swift build`)
 
 ## 9. 既知の制約・前提
+
+実装で判明したこと (マイルストーン 2)
+- **前面化**: 非 GUI プロセスからの `NSRunningApplication.activate` は macOS 14+ で無視される。AX の `AXFrontmost` 属性設定で行い、ダメなら `NSWorkspace.openApplication` で再オープンする
+- **frontmost 判定**: `NSRunningApplication.isActive` は非 GUI プロセスでは更新されない。`NSWorkspace.frontmostApplication` と `AXMain` を使う
+- **キー送信**: `CGEvent.postToPid` はメニューショートカットに届かない。前面化してから HID タップに流す
+- **文字入力**: Unicode 打鍵イベント (`keyboardSetUnicodeString`) は新規ウィンドウ直後などに丸ごと落ちることがある。`AXSelectedText` 設定によるキャレット挿入を第一手段にし、打鍵は最後の手段にする
 
 - Accessibility 権限は **Claude Code を起動しているホストアプリ** (Terminal / iTerm / VS Code / Claude Desktop) に付与する必要がある。ヘルパーはその子プロセスとして権限を継承する
 - Chrome の AX ツリーは AX API 経由だとレンダラ内容が出ないことがあるため、ブラウザは CDP を使う (Safari は AX でよく動く)

@@ -9,7 +9,7 @@ public func registerAppMethods(_ d: Dispatcher) {
                 var o: JSONObject = [
                     "pid": Int(app.processIdentifier),
                     "name": app.localizedName ?? "",
-                    "frontmost": app.isActive,
+                    "frontmost": isFrontmost(app.processIdentifier),
                     "hidden": app.isHidden,
                 ]
                 if let b = app.bundleIdentifier { o["bundleId"] = b }
@@ -34,7 +34,7 @@ public func registerAppMethods(_ d: Dispatcher) {
         } else {
             throw HelperError.invalidParams("pid or bundleId required")
         }
-        app.activate(options: [.activateIgnoringOtherApps])
+        activate(app.processIdentifier)
         return ["pid": Int(app.processIdentifier)] as JSONObject
     }
 }
