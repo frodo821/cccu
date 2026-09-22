@@ -54,10 +54,10 @@ export class HelperClient {
     const proc = spawn(this.helperPath, [], { stdio: ["pipe", "pipe", "pipe"] });
     this.proc = proc;
     proc.stderr.on("data", (d: Buffer) => this.log(d.toString().trimEnd()));
+    // stdin が先に閉じられても (EPIPE) プロセス全体を落とさない。待機中の呼び出しには失敗を返す
+    proc.stdin.on("error", (err) => this.failAll(new HelperError("INTERNAL", `helper stdin: ${err.message}`)));
     proc.on("exit", (code, signal) => {
-      const err = new HelperError("INTERNAL", `helper exited (code=${code}, signal=${signal})`);
-      for (const p of this.pending.values()) p.reject(err);
-      this.pending.clear();
+      this.failAll(new HelperError("INTERNAL", `helper exited (code=${code}, signal=${signal})`));
       this.proc = null;
       this.hello = null;
     });
@@ -80,15 +80,28 @@ export class HelperClient {
   async stop(): Promise<void> {
     const proc = this.proc;
     if (!proc) return;
-    try { await this.call("sys.shutdown", {}); } catch { /* already gone */ }
-    proc.stdin.end();
     this.proc = null;
     this.hello = null;
+    if (proc.stdin.writable) {
+      try { proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: this.nextId++, method: "sys.shutdown", params: {} }) + "\n"); } catch { /* ignore */ }
+      proc.stdin.end();
+    }
+    // ヘルパーは stdin EOF でも終了する。念のため少し待ってから kill
+    await new Promise<void>((resolve) => {
+      const t = setTimeout(() => { proc.kill(); resolve(); }, 500);
+      proc.once("exit", () => { clearTimeout(t); resolve(); });
+    });
+    this.failAll(new HelperError("INTERNAL", "helper stopped"));
+  }
+
+  private failAll(err: Error) {
+    for (const p of this.pending.values()) p.reject(err);
+    this.pending.clear();
   }
 
   call<M extends MethodName>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]> {
     const proc = this.proc;
-    if (!proc) return Promise.reject(new HelperError("INTERNAL", "helper not running"));
+    if (!proc || !proc.stdin.writable) return Promise.reject(new HelperError("INTERNAL", "helper not running"));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, method });
