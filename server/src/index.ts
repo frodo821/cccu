@@ -3,6 +3,14 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerTools } from "./tools/index.js";
 import { DesktopBackend } from "./backends/desktop/DesktopBackend.js";
 import { BrowserBackend } from "./backends/browser/BrowserBackend.js";
+import { assertSupported, detectPlatform } from "./core/platform.js";
+
+// macOS 以外は今は起動時に明確に拒否する (起動スクリプトも同じ判定をするが、直接起動された場合の保険)
+try { assertSupported(); } catch (e) {
+  process.stderr.write(`[cccu] ${(e as Error).message}\n`);
+  process.exit(78);
+}
+process.stderr.write(`[cccu] platform: ${detectPlatform()}\n`);
 
 const server = new McpServer({ name: "cccu", version: "0.1.0" });
 

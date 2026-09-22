@@ -8,6 +8,7 @@ import {
   HelperError, PROTOCOL_MAJOR, PROTOCOL_MIN_MINOR, parseProtocolVersion,
   type HelloResult, type MethodName, type Methods,
 } from "../../core/protocol.js";
+import { helperRelativePath } from "../../core/platform.js";
 
 const CLIENT_VERSION = "0.1.0";
 
@@ -133,9 +134,10 @@ function resolveHelperPath(): string {
   if (process.env.CCCU_HELPER_PATH) return process.env.CCCU_HELPER_PATH;
   // server/dist/index.js または server/src/backends/desktop/HelperClient.ts から repo root を辿る
   const here = dirname(fileURLToPath(import.meta.url));
+  const rel = helperRelativePath();
   const candidates = [
-    resolve(here, "../../ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper"),          // dist/
-    resolve(here, "../../../../ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper"),    // src/backends/desktop/
+    resolve(here, "../..", rel),          // dist/
+    resolve(here, "../../../..", rel),    // src/backends/desktop/
   ];
   return candidates.find(existsSync) ?? candidates[0];
 }

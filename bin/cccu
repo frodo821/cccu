@@ -72,6 +72,11 @@ cmd_permissions() {
 }
 
 cmd_install() {
+  local platform; platform="$("$ROOT/bin/cccu-platform")"
+  if [ "$platform" != "macos" ]; then
+    echo "cccu: macOS only for now (detected: $platform). Linux (AT-SPI) and Windows (UIA) helpers are planned." >&2
+    exit 78
+  fi
   local source="$REPO"
   [ "$1" = "--local" ] && source="$ROOT"
   if has_marketplace; then

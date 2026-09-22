@@ -256,7 +256,8 @@ cccu/
 7. ✅ iframe / OOPIF のスナップショット: 同一プロセス iframe は `getFullAXTree({frameId})`、OOPIF は `Target.setAutoAttach` で得た専用セッション。ref は (frame, backendDOMNodeId) で、OOPIF 内の座標は埋め込み元 `<iframe>` の位置を足してトップページの viewport 座標に変換する
 8. ✅ ブラウザのイベント購読 (ナビゲーション、ロード、ダイアログ、コンソール、例外、タブ) と `cu_dialog`
 9. ✅ 普段の Chrome を AX ツリーで操作 (設定不要)。`within` による部分木スナップショット、`cu_browser status/launch`
-10. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー、Chrome 拡張による CDP 中継 (普段の Chrome で CDP 品質を得る選択肢)
+10. ✅ プラットフォーム判定 (`bin/cccu-platform`, `core/platform.ts`) と macOS 以外の明示的な拒否。prebuilt ヘルパーの配布 (`release.yml`: universal ビルド、Developer ID 署名 (secret があれば)、公証 (任意)、build provenance attestation、`bin/cccu-fetch-helper` が `gh attestation verify` で検証して配置)
+11. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー、Chrome 拡張による CDP 中継 (普段の Chrome で CDP 品質を得る選択肢)、AX ツリー破損時のグリッド付きスクリーンショットによるフォールバック、操作後の差分スナップショット
 
 ## 9. 既知の制約・前提
 

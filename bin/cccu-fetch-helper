@@ -1,0 +1,39 @@
+#!/bin/sh
+# GitHub Release から prebuilt の cccu-helper.app を取得し、attestation を検証して配置する。
+#   CCCU_PREBUILT_URL      取得元 URL の上書き (テスト用: file:///path/to.tar.gz も可)
+#   CCCU_PREBUILT_UNVERIFIED=1  gh が無い等で検証できないときも受け入れる (非推奨)
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="${CCCU_REPO:-frodo821/cccu}"
+VERSION="$(python3 -c "import json;print(json.load(open('$ROOT/.claude-plugin/plugin.json'))['version'])")"
+NAME="cccu-helper-$VERSION-macos-universal.tar.gz"
+URL="${CCCU_PREBUILT_URL:-https://github.com/$REPO/releases/download/v$VERSION/$NAME}"
+DEST="$ROOT/ax_helpers/macos/.build/release"
+log() { echo "[cccu] $*" >&2; }
+
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+log "fetching prebuilt helper $VERSION from $URL"
+case "$URL" in
+  file://*) cp "${URL#file://}" "$tmp/$NAME" ;;
+  *) curl -fsSL --retry 3 -o "$tmp/$NAME" "$URL" || { log "download failed"; exit 1; } ;;
+esac
+
+if command -v gh >/dev/null 2>&1; then
+  if gh attestation verify "$tmp/$NAME" --repo "$REPO" >/dev/null 2>&1; then
+    log "attestation verified (built by GitHub Actions for $REPO)"
+  elif [ -n "${CCCU_PREBUILT_UNVERIFIED:-}" ]; then
+    log "WARNING: attestation could not be verified; continuing because CCCU_PREBUILT_UNVERIFIED is set"
+  else
+    log "attestation verification failed for $NAME; refusing to install it (set CCCU_PREBUILT_UNVERIFIED=1 to override)"; exit 1
+  fi
+elif [ -n "${CCCU_PREBUILT_UNVERIFIED:-}" ]; then
+  log "WARNING: gh not installed, skipping attestation verification (CCCU_PREBUILT_UNVERIFIED set)"
+else
+  log "gh CLI is needed to verify the prebuilt's attestation (brew install gh), or set CCCU_PREBUILT_UNVERIFIED=1"; exit 1
+fi
+
+mkdir -p "$DEST"; rm -rf "$DEST/cccu-helper.app"
+tar -C "$DEST" -xzf "$tmp/$NAME"
+codesign --verify --deep --strict "$DEST/cccu-helper.app" 2>/dev/null && log "code signature valid: $(codesign -dvv "$DEST/cccu-helper.app" 2>&1 | grep '^Authority' | head -1)" || log "WARNING: prebuilt is not validly signed"
+xattr -dr com.apple.quarantine "$DEST/cccu-helper.app" 2>/dev/null || true
+log "installed prebuilt helper to $DEST/cccu-helper.app"

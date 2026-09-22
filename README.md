@@ -6,6 +6,12 @@ Claude Code plugin that drives Chrome and macOS apps through their **accessibili
 - `ax_helpers/macos/` — Swift helper speaking the JSON-RPC protocol in `docs/PROTOCOL.md` over stdio.
 - `docs/DESIGN.md` — architecture and milestones. `docs/PROTOCOL.md` — the helper contract.
 
+## Platform support
+
+macOS only for now. `bin/cccu-platform` reports `macos` / `linux` / `windows` / `unknown`; the installer, the MCP
+launcher, and the server refuse anything but macOS with a clear message. The helper protocol is platform-neutral, so
+Linux (AT-SPI) and Windows (UIA) helpers can be added under `ax_helpers/` later.
+
 ## Install
 
 ```sh
@@ -23,13 +29,32 @@ built on the first tool call.
 `make install-local` copies the whole checkout (including `node_modules` and `.build`) into the plugin cache; run
 `make clean` first if you want a lean copy.
 
+## Prebuilt helper (no Xcode needed)
+
+Tags `v*` trigger `.github/workflows/release.yml`, which builds a universal `cccu-helper.app` on a macOS runner, signs
+it, attaches a build-provenance attestation, and uploads `cccu-helper-<version>-macos-universal.tar.gz` to the GitHub
+Release. The launcher uses it when `swift` is not installed (or when `CCCU_PREBUILT=1`): `bin/cccu-fetch-helper`
+downloads the archive for the plugin version and refuses to install it unless `gh attestation verify --repo frodo821/cccu`
+passes (needs the `gh` CLI; `CCCU_PREBUILT_UNVERIFIED=1` overrides, not recommended).
+
+Signing in CI uses these repository secrets; without them the build is ad-hoc signed (Accessibility works, desktop
+screenshots do not on macOS 15+):
+
+| secret | content |
+|---|---|
+| `DEVELOPER_ID_P12` | base64 of a **Developer ID Application** certificate + private key exported as .p12 |
+| `DEVELOPER_ID_P12_PASSWORD` | the .p12 password |
+| `NOTARY_KEY_P8`, `NOTARY_KEY_ID`, `NOTARY_KEY_ISSUER` | optional: App Store Connect API key for notarization |
+
+`scripts/package-helper.sh [version]` is the same script the workflow runs; it works locally too (output in `dist/`).
+
 ## Releasing
 
 `claude plugin update` only picks up a new version number, so every release needs a bump:
 
 ```sh
-bin/cccu bump 0.2.0        # sets version in plugin.json, package.json, marketplace.json
-git commit -am "Release 0.2.0" && git push
+bin/cccu bump 0.3.0        # sets version in plugin.json, package.json, marketplace.json
+git commit -am "Release 0.3.0" && git tag v0.3.0 && git push && git push --tags   # the tag builds the prebuilt helper
 ```
 
 Users then run `make update` (or `claude plugin marketplace update cccu && claude plugin update cccu@cccu`).

@@ -3,6 +3,11 @@
 # ログは stderr のみに出す (stdout は MCP のプロトコル用)。
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLATFORM="$("$ROOT/bin/cccu-platform")"
+if [ "$PLATFORM" != "macos" ]; then
+  echo "[cccu] this plugin currently supports macOS only (detected: $PLATFORM). Linux (AT-SPI) and Windows (UIA) helpers are planned; see docs/DESIGN.md." >&2
+  exit 78   # EX_CONFIG
+fi
 HELPER="$ROOT/ax_helpers/macos/.build/release/cccu-helper.app/Contents/MacOS/cccu-helper"
 BUNDLE="$ROOT/server/dist/index.js"
 log() { echo "[cccu] $*" >&2; }
@@ -10,9 +15,13 @@ log() { echo "[cccu] $*" >&2; }
 need() { command -v "$1" >/dev/null 2>&1 || { log "missing '$1' — $2"; exit 1; }; }
 
 if [ ! -x "$HELPER" ] || [ -n "$(find "$ROOT/ax_helpers/macos/Sources" -newer "$HELPER" -name '*.swift' 2>/dev/null | head -1)" ]; then
-  need swift "install Xcode Command Line Tools (xcode-select --install)"
-  log "building macOS helper (~30s)... (permissions: run 'bin/cccu permissions' once)"
-  (cd "$ROOT/ax_helpers/macos" && make release 2>&1 | tail -3 >&2)
+  if [ -n "${CCCU_PREBUILT:-}" ] || ! command -v swift >/dev/null 2>&1; then
+    # swift が無い (または明示指定) → GitHub Release の prebuilt を取得して attestation を検証する
+    "$ROOT/bin/cccu-fetch-helper" || { log "prebuilt helper unavailable; install Xcode Command Line Tools (xcode-select --install) to build locally"; exit 1; }
+  else
+    log "building macOS helper (~30s)... (permissions: run 'bin/cccu permissions' once)"
+    (cd "$ROOT/ax_helpers/macos" && make release 2>&1 | tail -3 >&2)
+  fi
 fi
 
 if [ ! -f "$BUNDLE" ] || [ -n "$(find "$ROOT/server/src" -newer "$BUNDLE" -name '*.ts' 2>/dev/null | head -1)" ]; then

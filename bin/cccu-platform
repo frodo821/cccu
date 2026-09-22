@@ -1,0 +1,9 @@
+#!/bin/sh
+# プラットフォーム判定: macos | linux | windows | unknown を出力する。
+# 将来 ax_helpers/linux (AT-SPI) / ax_helpers/windows (UIA) を足すときの分岐点。
+case "$(uname -s 2>/dev/null)" in
+  Darwin) echo macos ;;
+  Linux) echo linux ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) echo windows ;;
+  *) echo unknown ;;
+esac

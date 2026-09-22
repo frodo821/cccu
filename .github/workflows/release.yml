@@ -1,0 +1,73 @@
+name: release-helper
+
+# v* タグ (bin/cccu bump → git tag vX.Y.Z → push --tags) で macOS ヘルパーをビルドし、
+# 署名 (Developer ID の秘密情報があれば)・公証 (任意)・attestation 付きで Release に添付する。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  helper-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import Developer ID certificate (optional)
+        if: ${{ secrets.DEVELOPER_ID_P12 != '' }}
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p ci "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p ci "$KEYCHAIN"
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "CCCU_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "signing as: $IDENTITY"
+
+      - name: Prepare notarization key (optional)
+        if: ${{ secrets.NOTARY_KEY_P8 != '' }}
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          echo "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_ID=${{ secrets.NOTARY_KEY_ID }}" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_ISSUER=${{ secrets.NOTARY_KEY_ISSUER }}" >> "$GITHUB_ENV"
+
+      - name: Build, sign, package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$CCCU_SIGN_IDENTITY" ]; then
+            echo "::warning::No DEVELOPER_ID_P12 secret: helper will be ad-hoc signed. Accessibility works, desktop screenshots (Screen Recording) will not on macOS 15+."
+          fi
+          scripts/package-helper.sh "$VERSION"
+          ls -la dist/
+
+      - name: Run tests
+        run: cd ax_helpers/macos && swift test
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/cccu-helper-*.tar.gz
+
+      - name: Upload to release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/cccu-helper-*.tar.gz
+            dist/cccu-helper-*.tar.gz.sha256
+          generate_release_notes: true
