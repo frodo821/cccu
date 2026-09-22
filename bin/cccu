@@ -4,6 +4,7 @@
 #   bin/cccu update              マーケットプレイスとプラグインを最新にする
 #   bin/cccu uninstall           プラグインとマーケットプレイスを外す
 #   bin/cccu status              インストール状況とビルド状況
+#   bin/cccu bump <version>      リリース用: plugin.json / package.json / marketplace.json の version を揃える
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MARKET="cccu"
@@ -67,10 +68,29 @@ cmd_status() {
   for t in swift bun node; do printf '  %-7s %s\n' "$t:" "$(command -v $t >/dev/null 2>&1 && $t --version 2>&1 | head -1 || echo missing)"; done
 }
 
+cmd_bump() {
+  local v="$1"
+  [ -n "$v" ] || { echo "usage: bin/cccu bump <version>" >&2; exit 1; }
+  python3 - "$ROOT" "$v" <<'PY'
+import json, sys, re
+root, v = sys.argv[1], sys.argv[2]
+if not re.fullmatch(r"\d+\.\d+\.\d+", v): sys.exit("version must be MAJOR.MINOR.PATCH")
+for rel in [".claude-plugin/plugin.json", "server/package.json"]:
+    p = f"{root}/{rel}"; d = json.load(open(p)); d["version"] = v
+    json.dump(d, open(p, "w"), indent=2, ensure_ascii=False); open(p, "a").write("\n")
+p = f"{root}/.claude-plugin/marketplace.json"; d = json.load(open(p))
+for pl in d["plugins"]: pl["version"] = v
+json.dump(d, open(p, "w"), indent=2, ensure_ascii=False); open(p, "a").write("\n")
+print(f"version -> {v} (plugin.json, package.json, marketplace.json)")
+PY
+  echo "next: git commit -am 'Release $v' && git push   # then users run: bin/cccu update"
+}
+
 case "${1:-}" in
   install) shift; cmd_install "$@" ;;
   update) cmd_update ;;
   uninstall|remove) cmd_uninstall ;;
   status) cmd_status ;;
+  bump) cmd_bump "$2" ;;
   *) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

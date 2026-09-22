@@ -20,6 +20,20 @@ inspect with `make status`. Restart Claude Code after installing or updating.
 Requirements on the machine: `swift` (Xcode Command Line Tools), `bun`, `node` 22+. The helper and server bundle are
 built on the first tool call.
 
+`make install-local` copies the whole checkout (including `node_modules` and `.build`) into the plugin cache; run
+`make clean` first if you want a lean copy.
+
+## Releasing
+
+`claude plugin update` only picks up a new version number, so every release needs a bump:
+
+```sh
+bin/cccu bump 0.2.0        # sets version in plugin.json, package.json, marketplace.json
+git commit -am "Release 0.2.0" && git push
+```
+
+Users then run `make update` (or `claude plugin marketplace update cccu && claude plugin update cccu@cccu`).
+
 ## Build (development)
 
 ```sh
