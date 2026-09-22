@@ -24,5 +24,6 @@ public func makeDispatcher(shutdown: @escaping () -> Void) -> Dispatcher {
     registerUIMethods(d)
     registerInputMethods(d)
     registerScreenMethods(d)
+    registerObserveMethods(d)
     return d
 }

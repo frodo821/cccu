@@ -1,4 +1,6 @@
-import type { FindQuery, Modifier, Ref, SnapshotResult } from "./protocol.js";
+import type { AXEvent, FindQuery, Modifier, Ref, SnapshotResult } from "./protocol.js";
+
+export interface UIEvent extends Omit<AXEvent, "pid"> { target: string }
 
 /** ツール層が見る統一インタフェース。desktop / browser が実装する (DESIGN.md §3)。 */
 export interface TargetInfo {
@@ -36,6 +38,11 @@ export interface Backend {
   action(ref: Ref, action: string): Promise<void>;
   /** PNG スクリーンショット (補助情報)。desktop は Screen Recording 権限が要る */
   screenshot(target: string, opts?: { maxWidth?: number }): Promise<{ pngBase64: string; width?: number; height?: number }>;
+
+  /** UI イベント購読 (desktop: AXObserver)。events() はバッファを返して空にする */
+  observe(target: string, notifications?: string[]): Promise<{ subscription: string; notifications: string[] }>;
+  unobserve(subscription: string): Promise<void>;
+  events(): UIEvent[];
 
   dispose(): Promise<void>;
 }

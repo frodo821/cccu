@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import CCCUHelperCore
 
@@ -85,12 +86,35 @@ final class SnapshotTests: XCTestCase {
         XCTAssertNotNil(pngData(small))
     }
 
+    func testObserveErrors() {
+        let d = makeDispatcher(shutdown: {})
+        if case .error(_, let e) = d.handle(Request(json: ["id": 1, "method": "ui.observe", "params": ["pid": 1]])!) {
+            XCTAssertEqual(e.kind, .notFound)
+        } else { XCTFail("expected NOT_FOUND for pid 1") }
+        if case .error(_, let e) = d.handle(Request(json: ["id": 1, "method": "ui.unobserve", "params": ["subscription": "o99"]])!) {
+            XCTAssertEqual(e.kind, .notFound)
+        } else { XCTFail("expected NOT_FOUND") }
+    }
+
+    func testObserveFinderRegistersAndUnregisters() throws {
+        try XCTSkipUnless(Trust.isTrusted)
+        guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { throw XCTSkip("no Finder") }
+        let d = makeDispatcher(shutdown: {})
+        guard case .result(_, let v) = d.handle(Request(json: ["id": 1, "method": "ui.observe", "params": ["pid": Int(finder.processIdentifier)]])!) else { return XCTFail() }
+        let o = v as! JSONObject
+        let id = o["subscription"] as! String
+        XCTAssertFalse((o["notifications"] as! [String]).isEmpty)
+        XCTAssertTrue(ObserverRegistry.shared.active.contains(id))
+        guard case .result = d.handle(Request(json: ["id": 2, "method": "ui.unobserve", "params": ["subscription": id]])!) else { return XCTFail() }
+        XCTAssertFalse(ObserverRegistry.shared.active.contains(id))
+    }
+
     func testCapabilitiesCoverProtocolV1() {
         let d = makeDispatcher(shutdown: {})
         let expected = [
             "sys.hello", "sys.requestTrust", "sys.shutdown", "app.list", "app.activate", "window.list", "window.raise",
             "ui.snapshot", "ui.find", "ui.attributes", "ui.setAttribute", "ui.performAction", "ui.click", "ui.focus", "ui.waitFor",
-            "input.type", "input.key", "input.scroll", "input.mouse", "screen.capture",
+            "input.type", "input.key", "input.scroll", "input.mouse", "screen.capture", "ui.observe", "ui.unobserve",
         ]
         for m in expected { XCTAssertTrue(d.capabilities.contains(m), "missing \(m)") }
     }

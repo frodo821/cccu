@@ -114,7 +114,7 @@ export class HelperClient {
     let msg: any;
     try { msg = JSON.parse(line); } catch { this.log(`non-JSON line from helper: ${line}`); return; }
     if (msg.id == null && typeof msg.method === "string") {
-      this.onNotification?.(msg.method, msg.params);   // v1.0: 未知の通知は無視
+      this.onNotification?.(msg.method, msg.params);   // 未知の通知は受け手が無視する
       return;
     }
     const p = this.pending.get(msg.id);

@@ -30,7 +30,23 @@ final class TextEditE2ETests: XCTestCase {
     func testTypeIntoNewDocumentAndDiscard() throws {
         let pid = try call("app.activate", ["bundleId": "com.apple.TextEdit"])["pid"] as! Int
         Thread.sleep(forTimeInterval: 0.5)
+
+        // AXObserver: 新規ウィンドウ作成の通知を受け取る
+        var events: [JSONObject] = []
+        ObserverRegistry.shared.emit = { if case .notification(_, let params) = $0 { events.append(params) } }
+        defer { ObserverRegistry.shared.emit = { Transport.send($0) } }
+        let subId = try call("ui.observe", ["pid": pid, "notifications": ["AXWindowCreated", "AXFocusedWindowChanged"]])["subscription"] as! String
+
         _ = try call("input.key", ["key": "n", "modifiers": ["cmd"], "pid": pid])
+        let until = Date().addingTimeInterval(3)
+        while Date() < until && !events.contains(where: { $0["notification"] as? String == "AXWindowCreated" }) {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        let names = Set(events.compactMap { $0["notification"] as? String })
+        XCTAssertTrue(names.contains("AXWindowCreated") || names.contains("AXFocusedWindowChanged"), "events: \(events)")
+        XCTAssertEqual(events.first?["subscription"] as? String, subId)
+        XCTAssertEqual((events.first?["element"] as? JSONObject)?["role"] as? String, "window")
+        _ = try call("ui.unobserve", ["subscription": subId])
 
         // 新規書類の textarea が出るまで待つ
         let found = try call("ui.waitFor", ["scope": ["pid": pid], "condition": ["exists": ["role": "textarea"]], "timeoutMs": 5000])

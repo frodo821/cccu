@@ -351,6 +351,12 @@ export class BrowserBackend implements Backend {
     return { pngBase64: data };
   }
 
+  async observe(): Promise<{ subscription: string; notifications: string[] }> {
+    throw new HelperError("UNSUPPORTED", "event subscriptions are not available for browser tabs yet; use cu_wait");
+  }
+  async unobserve(subscription: string): Promise<void> { throw new HelperError("NOT_FOUND", `subscription ${subscription}`); }
+  events() { return []; }
+
   async dispose(): Promise<void> {
     this.conn?.close();
     this.conn = null;

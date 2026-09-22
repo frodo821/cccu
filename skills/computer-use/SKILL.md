@@ -24,6 +24,9 @@ Tips
 - Checkboxes and sliders: `cu_set_value` writes the value directly. `cu_attributes` shows raw attributes and available actions when something does not behave.
 - Sheets and dialogs appear as `sheet` children of the window; wait for them with `cu_wait exists: {role: "sheet"}`.
 
+Events (desktop)
+- `cu_observe` on an app subscribes to accessibility notifications (window created, focus changed, sheet opened, menu opened, title changed). `cu_events` returns and clears what arrived since the last call. Use this to notice dialogs or new windows that appeared as a side effect of an action, then snapshot to act on them. `cu_unobserve` when done.
+
 Screenshots
 - `cu_screenshot` is supplementary: read UI through snapshots, and take a screenshot only to confirm visual state (layout, images, colors). Desktop capture needs Screen Recording permission; on `NOT_TRUSTED` with `permission: screenRecording`, tell the user and continue with snapshots.
 

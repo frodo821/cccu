@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>frames fixture</title></head>
+<body>
+  <h1>Outer page</h1>
+  <p id="outer-out">outer:none</p>
+  <iframe id="same" title="Same-origin frame" src="/inner.html?who=same" width="400" height="150" style="margin-top:20px"></iframe>
+  <div style="height:300px"></div>
+  <iframe id="cross" title="Cross-site frame" src="__CROSS__/inner.html?who=cross" width="400" height="150"></iframe>
+  <script>
+    addEventListener('message', (e) => { document.getElementById('outer-out').textContent = 'outer:' + e.data; });
+  </script>
+</body></html>

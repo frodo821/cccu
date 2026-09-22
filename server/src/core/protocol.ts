@@ -80,8 +80,16 @@ export interface Methods {
     params: { pid?: number; windowNumber?: number; display?: number; maxWidth?: number };
     result: { pngBase64: string; scale: number; frame: Rect; width: number; height: number };
   };
+  "ui.observe": { params: { pid: number; notifications?: string[]; ref?: Ref }; result: { subscription: string; notifications: string[] } };
+  "ui.unobserve": { params: { subscription: string }; result: Record<string, never> };
 }
 export type MethodName = keyof Methods;
+
+/** ヘルパー → クライアントの `ax.event` 通知 */
+export interface AXEvent {
+  subscription: string; pid: number; notification: string;
+  element: { role?: string; title?: string; value?: unknown }; time: number;
+}
 
 export function parseProtocolVersion(v: string): { major: number; minor: number } {
   const m = /^(\d+)\.(\d+)$/.exec(v);

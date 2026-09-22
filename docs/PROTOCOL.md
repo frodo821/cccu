@@ -1,4 +1,4 @@
-# cccu helper protocol v1.1
+# cccu helper protocol v1.2
 
 MCP サーバー (クライアント) と OS 別アクセシビリティヘルパー (サーバー) の間の契約。
 `ax_helpers/*` の実装はすべてこの文書に従う。設計背景は `DESIGN.md` §4。
@@ -91,6 +91,13 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | `ui.focus` | `{ref: Ref}` | `{}` |
 | `ui.waitFor` | `{scope: Scope, condition: {exists: FindQuery} \| {gone: FindQuery} \| {stable: int}, timeoutMs: int}` | `{snapshot, text, refCount}` |
 
+### observe (v1.2)
+
+| method | params | result |
+|--------|--------|--------|
+| `ui.observe` | `{pid: int, notifications?: string[], ref?: Ref}` | `{subscription: string, notifications: string[]}` — AX 通知名 (`AXWindowCreated` など) を購読。`ref` 省略時はアプリ全体。既定は FocusedWindowChanged / WindowCreated / SheetCreated / FocusedUIElementChanged / TitleChanged / MenuOpened / MenuClosed / WindowMiniaturized / WindowDeminiaturized |
+| `ui.unobserve` | `{subscription: string}` | `{}` |
+
 ### input
 
 | method | params | result |
@@ -132,11 +139,12 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - ref 使用時、要素の生存確認に失敗したら `STALE_REF`
 - スナップショットを跨いだ同一性は保証しない
 
-## 8. 通知 (予約、v1.2 以降)
+## 8. 通知
 
-`ax.event` `{pid, notification: string, ref?: Ref}` — 購読 API (`ui.observe`) と併せて追加予定。クライアントは未知の通知を無視しなければならない。
+`ax.event` `{subscription: string, pid: int, notification: string, element: {role?, title?, value?}, time: number}` — `ui.observe` で購読した AX 通知。要素には ref を付けない (必要ならスナップショットを取り直す)。クライアントは未知の通知を無視しなければならない。
 
 ## 9. 変更履歴
 
+- 1.2: `ui.observe` / `ui.unobserve` と `ax.event` 通知
 - 1.1: `screen.capture` 実装、`maxWidth` / `width` / `height` 追加
 - 1.0: 初版

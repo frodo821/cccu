@@ -135,6 +135,32 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       return { content: [{ type: "image", data: r.pngBase64, mimeType: "image/png" } as any, { type: "text", text: `${r.width ?? "?"}x${r.height ?? "?"} png` }] };
     }));
 
+  server.registerTool("cu_observe",
+    { description: "Subscribe to UI events of an app (window created, focus changed, sheet opened, menu opened, title changed...). Events accumulate; read them with cu_events. Desktop only.",
+      inputSchema: { target: targetArg, notifications: z.array(z.string()).optional().describe("AX notification names, e.g. AXWindowCreated, AXValueChanged; default is a sensible set") } },
+    ({ target, notifications }) => run(async () => {
+      const r = await byTarget(target).observe(target, notifications);
+      return text(`subscription=${r.subscription}\nnotifications: ${r.notifications.join(", ")}`);
+    }));
+
+  server.registerTool("cu_events",
+    { description: "Return and clear UI events received since the last call (from cu_observe subscriptions).", inputSchema: {} },
+    () => run(async () => {
+      const evs = ctx.backends.flatMap((b) => b.events()).sort((a, b) => a.time - b.time);
+      if (!evs.length) return text("(no events)");
+      return text(evs.map((e) => {
+        const el = [e.element.role, e.element.title !== undefined ? `"${e.element.title}"` : null, e.element.value !== undefined ? `: ${JSON.stringify(e.element.value)}` : null].filter(Boolean).join(" ");
+        return `${new Date(e.time * 1000).toISOString().slice(11, 23)}\t${e.target}\t${e.notification}\t${el}`;
+      }).join("\n"));
+    }));
+
+  server.registerTool("cu_unobserve",
+    { description: "Cancel a cu_observe subscription.", inputSchema: { subscription: z.string() } },
+    ({ subscription }) => run(async () => {
+      const b = ctx.backends.find((b) => b.kind === "desktop") ?? ctx.backends[0];
+      await b.unobserve(subscription); return text("ok");
+    }));
+
   server.registerTool("cu_status",
     { description: "Backend status: helper protocol version and Accessibility trust, Chrome DevTools reachability.", inputSchema: {} },
     () => run(async () => {

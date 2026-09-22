@@ -252,7 +252,9 @@ cccu/
 3. ✅ Browser: CDP 接続 → snapshot → click/type。フィクスチャページでフォーム入力・送信・遷移・STALE_REF を `bun test` で検証
 4. ✅ MCP ツール層 + SKILL.md + plugin.json、`claude --plugin-dir` で動作確認 (`claude -p --plugin-dir .` で cu_status / cu_targets 呼び出しを確認)
 5. ✅ `ui.waitFor`、screenshot、ヘルパーのビルド配布 (`bin/cccu-server` が初回起動時に `swift build` / `bun build` する)
-6. 今後: iframe / OOPIF のスナップショット、AXObserver 通知 (`ax.event`)、Windows (UIA) / Linux (AT-SPI) ヘルパー
+6. ✅ AXObserver 通知: `ui.observe` / `ax.event` (v1.2)、TS 側はイベントバッファ + `cu_observe` / `cu_events` / `cu_unobserve`
+7. iframe / OOPIF のスナップショット (進行中)
+8. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー
 
 ## 9. 既知の制約・前提
 

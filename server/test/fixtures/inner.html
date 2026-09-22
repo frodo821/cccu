@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>inner</title></head>
+<body>
+  <h2 id="h">Inner <span id="who"></span></h2>
+  <input id="field" aria-label="Inner field" placeholder="type here">
+  <button id="btn" onclick="document.getElementById('res').textContent = 'clicked:' + document.getElementById('field').value; parent.postMessage(who + ':' + document.getElementById('field').value, '*');">Inner button</button>
+  <p id="res">not clicked</p>
+  <script>
+    const who = new URLSearchParams(location.search).get('who') || 'unknown';
+    document.getElementById('who').textContent = who;
+  </script>
+</body></html>

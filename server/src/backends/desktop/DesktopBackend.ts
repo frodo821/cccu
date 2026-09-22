@@ -1,5 +1,5 @@
-import type { Backend, SnapshotOptions, TargetInfo, WaitCondition } from "../../core/backend.js";
-import { HelperError, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
+import type { Backend, SnapshotOptions, TargetInfo, UIEvent, WaitCondition } from "../../core/backend.js";
+import { HelperError, type AXEvent, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
 import { parseTarget, scopeOf, type ParsedTarget } from "../../core/targets.js";
 import { HelperClient } from "./HelperClient.js";
 
@@ -7,15 +7,27 @@ import { HelperClient } from "./HelperClient.js";
 export class DesktopBackend implements Backend {
   readonly kind = "desktop" as const;
   private client: HelperClient | null = null;
+  private eventBuffer: UIEvent[] = [];
+  private static readonly MAX_EVENTS = 200;
 
-  constructor(private readonly factory: () => HelperClient = () => new HelperClient()) {}
+  constructor(private readonly factory?: () => HelperClient) {}
+
+  private onNotification = (method: string, params: unknown) => {
+    if (method !== "ax.event") return;
+    const e = params as AXEvent;
+    this.eventBuffer.push({ subscription: e.subscription, notification: e.notification, element: e.element, time: e.time, target: `app:${e.pid}` });
+    if (this.eventBuffer.length > DesktopBackend.MAX_EVENTS) this.eventBuffer.splice(0, this.eventBuffer.length - DesktopBackend.MAX_EVENTS);
+  };
 
   ownsTarget(t: string) { const k = parseTarget(t).kind; return k === "app" || k === "window" || k === "bundle"; }
   ownsSnapshot(id: string) { return id.startsWith("s"); }
 
   /** ヘルパーは最初の利用時に遅延起動する (権限ダイアログを不用意に出さないため) */
   async helper(): Promise<HelperClient> {
-    if (!this.client) { this.client = this.factory(); await this.client.start(); }
+    if (!this.client) {
+      this.client = this.factory ? this.factory() : new HelperClient({ onNotification: this.onNotification });
+      await this.client.start();
+    }
     return this.client;
   }
 
@@ -93,5 +105,15 @@ export class DesktopBackend implements Backend {
     const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth });
     return { pngBase64: r.pngBase64, width: r.width, height: r.height };
   }
+  async observe(target: string, notifications?: string[]) {
+    const h = await this.helper();
+    if (!h.has("ui.observe")) throw new HelperError("UNSUPPORTED", "helper does not support ui.observe (rebuild ax_helpers/macos)");
+    const t = await this.resolveTarget(target);
+    if (t.kind !== "app" && t.kind !== "window") throw new HelperError("UNSUPPORTED", `cannot observe ${target}`);
+    return h.call("ui.observe", { pid: t.pid, notifications });
+  }
+  async unobserve(subscription: string) { await (await this.helper()).call("ui.unobserve", { subscription }); }
+  events(): UIEvent[] { const out = this.eventBuffer; this.eventBuffer = []; return out; }
+
   async dispose(): Promise<void> { await this.client?.stop(); this.client = null; }
 }
