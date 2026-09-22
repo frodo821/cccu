@@ -1,27 +1,35 @@
 import type { Backend, SnapshotOptions, TargetInfo, WaitCondition } from "../../core/backend.js";
 import { CDPConnection, discover } from "../../core/cdp.js";
 import { HelperError, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
-import { buildTree, collapse, markMatches, matcher, prune, render, type AXNode, type CDPAXNode } from "./axtree.js";
+import { buildTree, collapse, markMatches, matcher, prune, render, type AXNode, type CDPAXNode, type RefTarget } from "./axtree.js";
 import { describeKey, editingCommands, modifierBits } from "./keys.js";
 
-interface Session { targetId: string; sessionId: string }
-interface Snapshot { targetId: string; refs: Map<string, number> }
+/** CDP セッション。page (トップ) と OOPIF (プロセス外 iframe) の 2 種 */
+interface Session { targetId: string; sessionId: string; kind: "page" | "iframe"; page: Session; ready: Promise<void> }
+
+/**
+ * フレーム。同一プロセスの iframe はトップと同じセッションで frameId 指定、OOPIF は専用セッション。
+ * owner はこのフレームを埋め込む <iframe> 要素 (親フレーム側)。
+ */
+interface Frame { session: Session; frameId?: string; owner?: { frame: Frame; backendNodeId: number } }
+interface ElementRef { backendNodeId: number; frame: Frame }
+interface Snapshot { targetId: string; refs: Map<string, ElementRef> }
 
 const DEFAULT_CDP = "http://127.0.0.1:9222";
 const KEEP_SNAPSHOTS = 8;
 
 /**
  * Chrome を CDP で操作する backend。target は "tab:<targetId>"、snapshot id は "b<N>"。
- * ref は backendDOMNodeId に対応する (ページ遷移で無効になる → STALE_REF)。
+ * ref は (frame, backendDOMNodeId) に対応する (ページ遷移で無効になる → STALE_REF)。
  */
 export class BrowserBackend implements Backend {
   readonly kind = "browser" as const;
   private conn: CDPConnection | null = null;
-  private sessions = new Map<string, Session>();
+  private sessions = new Map<string, Session>();        // targetId → page session
+  private frameSessions = new Map<string, Session>();   // OOPIF の frameId (= targetId) → session
   private snapshots = new Map<string, Snapshot>();
   private snapshotCounter = 0;
   private readonly cdpUrl: string;
-  /** デスクトップ側でブラウザを前面化するためのフック (任意) */
   private readonly activateApp?: () => Promise<void>;
 
   constructor(opts: { cdpUrl?: string; activateApp?: () => Promise<void> } = {}) {
@@ -32,17 +40,34 @@ export class BrowserBackend implements Backend {
   ownsTarget(t: string) { return t.startsWith("tab:") || t === "tab" || t === "browser"; }
   ownsSnapshot(id: string) { return id.startsWith("b"); }
 
-  // MARK: 接続
+  // MARK: 接続とセッション
 
   private async connection(): Promise<CDPConnection> {
     if (this.conn?.isOpen) return this.conn;
     const { browserWs } = await discover(this.cdpUrl);
-    this.conn = await CDPConnection.connect(browserWs);
+    const conn = await CDPConnection.connect(browserWs);
+    this.conn = conn;
     this.sessions.clear();
-    this.conn.on("Target.detachedFromTarget", (p) => {
+    this.frameSessions.clear();
+    conn.on("Target.detachedFromTarget", (p) => {
       for (const [k, s] of this.sessions) if (s.sessionId === p.sessionId) this.sessions.delete(k);
+      for (const [k, s] of this.frameSessions) if (s.sessionId === p.sessionId) this.frameSessions.delete(k);
     });
-    return this.conn;
+    // OOPIF が自動アタッチされたら専用セッションとして登録する
+    conn.on("Target.attachedToTarget", (p, parentSessionId) => {
+      if (p.targetInfo?.type !== "iframe") return;
+      const page = [...this.sessions.values()].find((s) => s.sessionId === parentSessionId)
+        ?? [...this.frameSessions.values()].find((s) => s.sessionId === parentSessionId)?.page;
+      if (!page) return;
+      const s: Session = { targetId: p.targetInfo.targetId, sessionId: p.sessionId, kind: "iframe", page, ready: Promise.resolve() };
+      s.ready = (async () => {
+        await conn.send("DOM.enable", {}, s.sessionId);
+        await conn.send("Accessibility.enable", {}, s.sessionId);
+        await conn.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, s.sessionId).catch(() => {});
+      })().catch(() => {});
+      this.frameSessions.set(s.targetId, s);
+    });
+    return conn;
   }
 
   private targetIdOf(target: string): string {
@@ -61,11 +86,14 @@ export class BrowserBackend implements Backend {
     } catch (e) {
       throw new HelperError("NOT_FOUND", `tab ${targetId} not found (${(e as Error).message})`);
     }
-    const s = { targetId, sessionId: r.sessionId };
+    const s = { targetId, sessionId: r.sessionId, kind: "page" } as Session;
+    s.page = s;
+    s.ready = Promise.resolve();
     this.sessions.set(targetId, s);
     await conn.send("Page.enable", {}, s.sessionId);
     await conn.send("DOM.enable", {}, s.sessionId);
     await conn.send("Accessibility.enable", {}, s.sessionId);
+    await conn.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, s.sessionId);
     return s;
   }
 
@@ -119,12 +147,46 @@ export class BrowserBackend implements Backend {
     return JSON.parse(r.result.value);
   }
 
-  private async tree(s: Session): Promise<AXNode | null> {
-    const { nodes } = await this.send<{ nodes: CDPAXNode[] }>(s, "Accessibility.getFullAXTree");
-    return buildTree(nodes);
+  // MARK: ツリー (フレーム横断)
+
+  /** フレームの AX ツリーを取り、iframe ノードには子フレームのツリーをぶら下げる */
+  private async frameTree(frame: Frame, depth = 0): Promise<AXNode | null> {
+    await frame.session.ready;
+    const params = frame.frameId ? { frameId: frame.frameId } : {};
+    let nodes: CDPAXNode[];
+    try {
+      ({ nodes } = await this.send<{ nodes: CDPAXNode[] }>(frame.session, "Accessibility.getFullAXTree", params));
+    } catch { return null; }
+    const root = buildTree(nodes, frame);
+    if (!root || depth >= 8) return root;
+    await this.attachChildFrames(root, frame, depth);
+    return root;
   }
 
-  private register(targetId: string, refs: Map<string, number>): string {
+  private async attachChildFrames(node: AXNode, frame: Frame, depth: number): Promise<void> {
+    if (node.role === "iframe" && node.backendNodeId !== undefined && node.children.length === 0) {
+      let contentFrameId: string | undefined;
+      try {
+        const { node: dom } = await this.send(frame.session, "DOM.describeNode", { backendNodeId: node.backendNodeId });
+        contentFrameId = dom.frameId ?? dom.contentDocument?.frameId;
+      } catch { /* 取れなければ空のまま */ }
+      if (contentFrameId) {
+        const owner = { frame, backendNodeId: node.backendNodeId };
+        const oopif = this.frameSessions.get(contentFrameId);
+        const child: Frame = oopif ? { session: oopif, owner } : { session: frame.session, frameId: contentFrameId, owner };
+        const sub = await this.frameTree(child, depth + 1);
+        if (sub) node.children = [sub];
+      }
+      return;
+    }
+    for (const c of node.children) await this.attachChildFrames(c, frame, depth);
+  }
+
+  private async tree(s: Session): Promise<AXNode | null> {
+    return this.frameTree({ session: s });
+  }
+
+  private register(targetId: string, refs: Map<string, ElementRef>): string {
     const id = `b${++this.snapshotCounter}`;
     this.snapshots.set(id, { targetId, refs });
     while (this.snapshots.size > KEEP_SNAPSHOTS) this.snapshots.delete(this.snapshots.keys().next().value!);
@@ -148,14 +210,14 @@ export class BrowserBackend implements Backend {
   }
 
   private finish(s: Session, forest: AXNode[], opts: SnapshotOptions): SnapshotResult {
-    const refs = new Map<string, number>();
+    const refs = new Map<string, ElementRef>();
     const texts: string[] = [];
     let truncated = false;
     for (const n of forest) {
       const r = render(n, { maxDepth: opts.maxDepth ?? 40, maxNodes: (opts.maxNodes ?? 800) - refs.size });
-      // render は e1 から振るので、複数ルートのときはずらす
-      for (const [k, v] of r.refs) refs.set(`e${refs.size + 1}`, v);
-      texts.push(refs.size === r.refs.size ? r.text : r.text.replace(/\[ref=e(\d+)\]/g, (_m, d) => `[ref=e${Number(d) + refs.size - r.refs.size}]`));
+      const offset = refs.size;
+      for (const [, v] of r.refs) refs.set(`e${refs.size + 1}`, toElementRef(v));
+      texts.push(offset === 0 ? r.text : r.text.replace(/\[ref=e(\d+)\]/g, (_m, d) => `[ref=e${Number(d) + offset}]`));
       truncated ||= r.truncated;
     }
     return { snapshot: this.register(s.targetId, refs), text: texts.join("\n"), refCount: refs.size, truncated };
@@ -185,34 +247,47 @@ export class BrowserBackend implements Backend {
 
   // MARK: 要素操作
 
-  private resolve(ref: Ref): { s: Promise<Session>; backendNodeId: number } {
+  private resolve(ref: Ref): ElementRef {
     const snap = this.snapshots.get(ref.snapshot);
     if (!snap) throw new HelperError("STALE_REF", `snapshot ${ref.snapshot} is no longer available (keep the latest ${KEEP_SNAPSHOTS})`);
-    const backendNodeId = snap.refs.get(ref.ref);
-    if (backendNodeId === undefined) throw new HelperError("NOT_FOUND", `ref ${ref.ref} not in snapshot ${ref.snapshot}`);
-    return { s: this.session(snap.targetId), backendNodeId };
+    const el = snap.refs.get(ref.ref);
+    if (!el) throw new HelperError("NOT_FOUND", `ref ${ref.ref} not in snapshot ${ref.snapshot}`);
+    return el;
   }
 
-  /** 要素を可視化して中心座標 (CSS px, viewport 基準) を返す */
-  private async center(s: Session, backendNodeId: number): Promise<{ x: number; y: number }> {
+  /** 要素の content box の左上と中心を、トップページの viewport 座標で返す */
+  private async absoluteBox(el: ElementRef): Promise<{ x: number; y: number; cx: number; cy: number }> {
+    let quad: number[];
     try {
-      await this.send(s, "DOM.scrollIntoViewIfNeeded", { backendNodeId });
-      const { model } = await this.send(s, "DOM.getBoxModel", { backendNodeId });
-      const q: number[] = model.content;
-      return { x: (q[0] + q[2] + q[4] + q[6]) / 4, y: (q[1] + q[3] + q[5] + q[7]) / 4 };
+      await this.send(el.frame.session, "DOM.scrollIntoViewIfNeeded", { backendNodeId: el.backendNodeId });
+      ({ model: { content: quad } } = await this.send(el.frame.session, "DOM.getBoxModel", { backendNodeId: el.backendNodeId }));
     } catch (e) {
       throw new HelperError("STALE_REF", `element no longer exists or has no box: ${(e as Error).message}`);
     }
+    let x = Math.min(quad[0], quad[6]), y = Math.min(quad[1], quad[3]);
+    let cx = (quad[0] + quad[2] + quad[4] + quad[6]) / 4, cy = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+    // OOPIF の座標はそのフレームの viewport 基準なので、埋め込み元 <iframe> の位置を足す
+    if (el.frame.session.kind === "iframe" && el.frame.owner) {
+      const o = await this.absoluteBox({ backendNodeId: el.frame.owner.backendNodeId, frame: el.frame.owner.frame });
+      const inset = await this.frameInset(el.frame.owner);
+      x += o.x + inset.x; y += o.y + inset.y; cx += o.x + inset.x; cy += o.y + inset.y;
+    }
+    return { x, y, cx, cy };
   }
 
-  private async callOn(s: Session, backendNodeId: number, fn: string, args: unknown[] = []): Promise<any> {
+  /** <iframe> の content box 左上から実際の描画領域までのずれ (border/padding は content 外なので通常 0) */
+  private async frameInset(_owner: { frame: Frame; backendNodeId: number }): Promise<{ x: number; y: number }> {
+    return { x: 0, y: 0 };
+  }
+
+  private async callOn(el: ElementRef, fn: string, args: unknown[] = []): Promise<any> {
     let objectId: string;
     try {
-      ({ object: { objectId } } = await this.send(s, "DOM.resolveNode", { backendNodeId }));
+      ({ object: { objectId } } = await this.send(el.frame.session, "DOM.resolveNode", { backendNodeId: el.backendNodeId }));
     } catch {
       throw new HelperError("STALE_REF", "element no longer exists; take a new snapshot");
     }
-    const r = await this.send(s, "Runtime.callFunctionOn", {
+    const r = await this.send(el.frame.session, "Runtime.callFunctionOn", {
       objectId, functionDeclaration: fn, arguments: args.map((value) => ({ value })), returnByValue: true, awaitPromise: true,
     });
     if (r.exceptionDetails) throw new HelperError("AX_ERROR", r.exceptionDetails.exception?.description ?? "script error");
@@ -220,46 +295,45 @@ export class BrowserBackend implements Backend {
   }
 
   async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[] }): Promise<string> {
-    const { s: sp, backendNodeId } = this.resolve(ref);
-    const s = await sp;
-    const { x, y } = await this.center(s, backendNodeId);
+    const el = this.resolve(ref);
+    const { cx: x, cy: y } = await this.absoluteBox(el);
+    const page = el.frame.session.page;
     const button = opts.button ?? "left";
     const modifiers = modifierBits(opts.modifiers);
-    await this.send(s, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers });
+    await this.send(page, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers });
     for (let i = 1; i <= (opts.count ?? 1); i++) {
-      await this.send(s, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: i, modifiers });
-      await this.send(s, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: i, modifiers });
+      await this.send(page, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: i, modifiers });
+      await this.send(page, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: i, modifiers });
     }
     return "cdp";
   }
 
   async focus(ref: Ref): Promise<void> {
-    const { s: sp, backendNodeId } = this.resolve(ref);
-    const s = await sp;
-    try { await this.send(s, "DOM.focus", { backendNodeId }); }
+    const el = this.resolve(ref);
+    try { await this.send(el.frame.session, "DOM.focus", { backendNodeId: el.backendNodeId }); }
     catch (e) { throw new HelperError("UNSUPPORTED", `cannot focus: ${(e as Error).message}`); }
   }
 
   async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean }): Promise<string> {
-    let s: Session;
+    let page: Session;
     if (ref) {
-      const r = this.resolve(ref);
-      s = await r.s;
-      await this.send(s, "DOM.focus", { backendNodeId: r.backendNodeId });
+      const el = this.resolve(ref);
+      await this.send(el.frame.session, "DOM.focus", { backendNodeId: el.backendNodeId });
       if (opts.clear) {
-        await this.callOn(s, r.backendNodeId, `function() {
+        await this.callOn(el, `function() {
           if ('value' in this) { this.value = ''; this.dispatchEvent(new Event('input', {bubbles: true})); }
           else if (this.isContentEditable) { this.textContent = ''; }
         }`);
       }
+      page = el.frame.session.page;
+      await this.send(el.frame.session, "Input.insertText", { text });
     } else {
-      // ref なし: 最後に使ったセッションのフォーカス要素へ
       const last = [...this.sessions.values()].at(-1);
       if (!last) throw new HelperError("INVALID_PARAMS", "no browser tab in use; pass a ref");
-      s = last;
+      page = last;
+      await this.send(page, "Input.insertText", { text });
     }
-    await this.send(s, "Input.insertText", { text });
-    if (opts.submit) await this.key(`tab:${s.targetId}`, "Enter");
+    if (opts.submit) await this.key(`tab:${page.targetId}`, "Enter");
     return "insertText";
   }
 
@@ -280,16 +354,14 @@ export class BrowserBackend implements Backend {
   }
 
   async scroll(ref: Ref, dx: number, dy: number): Promise<void> {
-    const { s: sp, backendNodeId } = this.resolve(ref);
-    const s = await sp;
-    const { x, y } = await this.center(s, backendNodeId);
-    await this.send(s, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: dx, deltaY: dy });
+    const el = this.resolve(ref);
+    const { cx: x, cy: y } = await this.absoluteBox(el);
+    await this.send(el.frame.session.page, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: dx, deltaY: dy });
   }
 
   async setValue(ref: Ref, value: string | number | boolean): Promise<void> {
-    const { s: sp, backendNodeId } = this.resolve(ref);
-    const s = await sp;
-    const ok = await this.callOn(s, backendNodeId, `function(v) {
+    const el = this.resolve(ref);
+    const ok = await this.callOn(el, `function(v) {
       const fire = (t) => this.dispatchEvent(new Event(t, { bubbles: true }));
       if (this instanceof HTMLInputElement && (this.type === 'checkbox' || this.type === 'radio')) {
         if (this.checked !== Boolean(v)) this.click();
@@ -312,9 +384,8 @@ export class BrowserBackend implements Backend {
   }
 
   async attributes(ref: Ref, names?: string[]): Promise<Record<string, unknown>> {
-    const { s: sp, backendNodeId } = this.resolve(ref);
-    const s = await sp;
-    const dom = await this.callOn(s, backendNodeId, `function(names) {
+    const el = this.resolve(ref);
+    const dom = await this.callOn(el, `function(names) {
       const out = { tag: this.tagName.toLowerCase() };
       for (const a of this.attributes) if (!names || names.includes(a.name)) out[a.name] = a.value;
       if ('value' in this) out.value = this.value;
@@ -323,7 +394,8 @@ export class BrowserBackend implements Backend {
       const r = this.getBoundingClientRect(); out.rect = { x: r.x, y: r.y, w: r.width, h: r.height };
       return out;
     }`, [names ?? null]);
-    const ax = await this.send(s, "Accessibility.getPartialAXTree", { backendNodeId, fetchRelatives: false }).catch(() => null);
+    if (el.frame.owner) dom.frame = el.frame.session.kind === "iframe" ? "oopif" : "iframe";
+    const ax = await this.send(el.frame.session, "Accessibility.getPartialAXTree", { backendNodeId: el.backendNodeId, fetchRelatives: false }).catch(() => null);
     const node = ax?.nodes?.[0];
     if (node) {
       dom.role = node.role?.value; dom.name = node.name?.value;
@@ -333,14 +405,13 @@ export class BrowserBackend implements Backend {
   }
 
   async action(ref: Ref, action: string): Promise<void> {
-    const { s: sp, backendNodeId } = this.resolve(ref);
-    const s = await sp;
+    const el = this.resolve(ref);
     switch (action) {
       case "AXPress": case "click": await this.click(ref, {}); return;
-      case "hover": { const { x, y } = await this.center(s, backendNodeId); await this.send(s, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); return; }
+      case "hover": { const { cx: x, cy: y } = await this.absoluteBox(el); await this.send(el.frame.session.page, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); return; }
       case "AXShowMenu": case "contextmenu": await this.click(ref, { button: "right" }); return;
-      case "submit": await this.callOn(s, backendNodeId, "function(){ (this.form || this).requestSubmit?.(); }"); return;
-      case "scrollIntoView": await this.send(s, "DOM.scrollIntoViewIfNeeded", { backendNodeId }); return;
+      case "submit": await this.callOn(el, "function(){ (this.form || this).requestSubmit?.(); }"); return;
+      case "scrollIntoView": await this.send(el.frame.session, "DOM.scrollIntoViewIfNeeded", { backendNodeId: el.backendNodeId }); return;
       default: throw new HelperError("UNSUPPORTED", `browser action ${action} (try click, hover, contextmenu, submit, scrollIntoView)`);
     }
   }
@@ -361,7 +432,12 @@ export class BrowserBackend implements Backend {
     this.conn?.close();
     this.conn = null;
     this.sessions.clear();
+    this.frameSessions.clear();
   }
+}
+
+function toElementRef(v: RefTarget): ElementRef {
+  return { backendNodeId: v.backendNodeId, frame: v.frame as Frame };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

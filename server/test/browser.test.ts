@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BrowserBackend } from "../src/backends/browser/BrowserBackend.js";
+import { readFileSync } from "node:fs";
 import { parseRef } from "../src/core/refs.js";
 
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -13,6 +14,8 @@ const PORT = 9333;
 const fixture = "file://" + resolve(import.meta.dir, "fixtures/form.html");
 
 let chrome: ChildProcess | null = null;
+let httpServer: ReturnType<typeof Bun.serve> | null = null;
+let httpPort = 0;
 let profile = "";
 let backend: BrowserBackend;
 let tab = "";
@@ -38,10 +41,25 @@ beforeAll(async () => {
   backend = new BrowserBackend({ cdpUrl });
   const line = await backend.navigate("new", fixture);
   tab = line.split("\t")[0];
+
+  // iframe フィクスチャ用: localhost で配信し、__CROSS__ は 127.0.0.1 (別サイト → OOPIF) にする
+  httpServer = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const path = new URL(req.url).pathname;
+      const file = resolve(import.meta.dir, "fixtures" + (path === "/" ? "/frames.html" : path));
+      try {
+        const body = readFileSync(file, "utf8").replace("__CROSS__", `http://127.0.0.1:${httpPort}`);
+        return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+      } catch { return new Response("not found", { status: 404 }); }
+    },
+  });
+  httpPort = httpServer.port!;
 });
 
 afterAll(async () => {
   await backend?.dispose();
+  httpServer?.stop(true);
   chrome?.kill();
   if (profile) rmSync(profile, { recursive: true, force: true });
 });
@@ -132,6 +150,41 @@ describe.skipIf(!haveChrome)("BrowserBackend", () => {
   test("screenshot returns a PNG", async () => {
     const r = await backend.screenshot(tab);
     expect(Buffer.from(r.pngBase64, "base64").subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  });
+
+  test("iframes: same-origin and cross-site frames are part of the snapshot and clickable", async () => {
+    const line = await backend.navigate("new", `http://localhost:${httpPort}/frames.html`);
+    const t2 = line.split("\t")[0];
+    await backend.waitFor(t2, { exists: { title: "Inner cross" } }, 5000);   // OOPIF のアタッチを待つ
+    const s = await backend.snapshot(t2);
+    expect(s.text).toContain('iframe "Same-origin frame"');
+    expect(s.text).toContain('iframe "Cross-site frame"');
+    expect(s.text).toContain('heading[h2] "Inner same"');
+    expect(s.text).toContain('heading[h2] "Inner cross"');
+
+    // 同一オリジン: フィールドに入力 → ボタンをクリック → 親に postMessage が届く (座標が正しい証拠)
+    const sameBlock = s.text.slice(s.text.indexOf('iframe "Same-origin frame"'), s.text.indexOf('iframe "Cross-site frame"'));
+    const sameField = refOf({ snapshot: s.snapshot, text: sameBlock }, 'textbox "Inner field"');
+    const sameBtn = refOf({ snapshot: s.snapshot, text: sameBlock }, 'button "Inner button"');
+    await backend.type(sameField, "hello", { clear: true });
+    await backend.click(sameBtn, {});
+    const r1 = await backend.waitFor(t2, { exists: { title: "outer:same:hello" } }, 3000);
+    expect(r1.text).toContain("outer:same:hello");
+    expect((await backend.attributes(sameField)).frame).toBe("iframe");
+
+    // クロスサイト (OOPIF): 座標はフレームの位置を足して変換される
+    const crossBlock = s.text.slice(s.text.indexOf('iframe "Cross-site frame"'));
+    const crossField = refOf({ snapshot: s.snapshot, text: crossBlock }, 'textbox "Inner field"');
+    const crossBtn = refOf({ snapshot: s.snapshot, text: crossBlock }, 'button "Inner button"');
+    await backend.type(crossField, "world", { clear: true });
+    await backend.click(crossBtn, {});
+    const r2 = await backend.waitFor(t2, { exists: { title: "outer:cross:world" } }, 3000);
+    expect(r2.text).toContain("outer:cross:world");
+    expect((await backend.attributes(crossField)).frame).toBe("oopif");
+
+    // find もフレームを跨ぐ
+    const f = await backend.find(t2, { role: "button", title: "Inner button" });
+    expect(f.text.split("\n").filter((l) => l.includes('button "Inner button"')).length).toBe(2);
   });
 
   test("unknown snapshot id", async () => {

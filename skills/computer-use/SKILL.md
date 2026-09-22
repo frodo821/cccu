@@ -15,7 +15,7 @@ Browser notes
 - Chrome must run with `--remote-debugging-port=9222`; if `cu_targets` reports no DevTools endpoint, show the user the command from the README instead of trying to launch Chrome yourself.
 - Browser refs look like `b2/e5`. They die on navigation: after `cu_navigate` or a click that loads a page, take a new snapshot.
 - `cu_set_value` handles selects (by option value or label), checkboxes and inputs with proper input/change events. `cu_key` supports cmd+A/C/V/X/Z in text fields.
-- Content inside iframes is not part of the snapshot yet.
+- Content inside iframes (including cross-site ones) appears under the `iframe` node and can be acted on like anything else.
 
 Tips
 - Roles are lower-case AX roles without the prefix: `button`, `textfield`, `textarea`, `checkbox`, `popupbutton`, `menuitem`, `sheet`, `window`.

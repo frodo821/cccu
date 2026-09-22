@@ -22,6 +22,8 @@ export interface AXNode {
   backendNodeId?: number;
   children: AXNode[];
   matched: boolean;
+  /** このノードが属するフレーム (BrowserBackend が付ける)。ref 解決に使う */
+  frame?: unknown;
 }
 
 /** ref を付けるロール */
@@ -30,7 +32,7 @@ const refRoles = new Set([
   "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "option", "listbox", "menu", "menubar", "textarea",
   "webarea", "dialog", "alertdialog", "tree", "treeitem", "grid", "gridcell", "row", "cell", "columnheader", "rowheader",
   "scrollbar", "progressbar", "img", "image", "heading", "region", "navigation", "main", "form", "banner", "contentinfo",
-  "search", "article", "list", "listitem", "table", "video", "audio", "canvas",
+  "search", "article", "list", "listitem", "table", "video", "audio", "canvas", "iframe",
 ]);
 const collapseRoles = new Set(["generic", "none", "presentation", "group", "paragraph", "section", "inlinetextbox", "ignored", "labeltext", "menulistpopup", "listmarker"]);
 const stateProps: Record<string, (v: unknown) => string | null> = {
@@ -53,7 +55,7 @@ export function normalizeRole(raw: string): string {
 }
 
 /** フラットな CDP ノード配列からツリーを作る */
-export function buildTree(nodes: CDPAXNode[]): AXNode | null {
+export function buildTree(nodes: CDPAXNode[], frame?: unknown): AXNode | null {
   const byId = new Map(nodes.map((n) => [n.nodeId, n]));
   const root = nodes.find((n) => !n.parentId) ?? nodes[0];
   if (!root) return null;
@@ -76,7 +78,7 @@ export function buildTree(nodes: CDPAXNode[]): AXNode | null {
     else if (v !== undefined && v !== null && v !== "") value = v as AXNode["value"];
     const roleLabel = role === "heading" && level ? `heading[h${level}]` : role;
     const actionable = refRoles.has(role) && !(role === "img" && !title);
-    const node: AXNode = { role: roleLabel, title, value, states, actionable, backendNodeId: n.backendDOMNodeId, children: [], matched: false };
+    const node: AXNode = { role: roleLabel, title, value, states, actionable, backendNodeId: n.backendDOMNodeId, children: [], matched: false, frame };
     for (const cid of n.childIds ?? []) {
       const c = byId.get(cid);
       if (c) { const cn = convert(c); if (cn) node.children.push(cn); }
@@ -127,13 +129,14 @@ export function markMatches(node: AXNode, match: (n: AXNode) => boolean): number
   return count;
 }
 
-export interface Rendered { text: string; refs: Map<string, number>; truncated: boolean }
+export interface RefTarget { backendNodeId: number; frame?: unknown }
+export interface Rendered { text: string; refs: Map<string, RefTarget>; truncated: boolean }
 
 /** PROTOCOL.md §6 の記法に整形。ref → backendDOMNodeId */
 export function render(root: AXNode, opts: { maxDepth: number; maxNodes: number; valueLimit?: number }): Rendered {
   const limit = opts.valueLimit ?? 80;
   const lines: string[] = [];
-  const refs = new Map<string, number>();
+  const refs = new Map<string, RefTarget>();
   let count = 0, truncated = false;
   const q = (s: string) => {
     let t = s.replace(/\n/g, "⏎");
@@ -147,7 +150,7 @@ export function render(root: AXNode, opts: { maxDepth: number; maxNodes: number;
     if (n.title) line += " " + q(n.title);
     if ((n.actionable || n.matched) && n.backendNodeId !== undefined) {
       const ref = `e${refs.size + 1}`;
-      refs.set(ref, n.backendNodeId);
+      refs.set(ref, { backendNodeId: n.backendNodeId, frame: n.frame });
       line += ` [ref=${ref}]`;
     }
     for (const s of n.states) line += ` [${s}]`;

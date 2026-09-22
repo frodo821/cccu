@@ -253,7 +253,7 @@ cccu/
 4. ✅ MCP ツール層 + SKILL.md + plugin.json、`claude --plugin-dir` で動作確認 (`claude -p --plugin-dir .` で cu_status / cu_targets 呼び出しを確認)
 5. ✅ `ui.waitFor`、screenshot、ヘルパーのビルド配布 (`bin/cccu-server` が初回起動時に `swift build` / `bun build` する)
 6. ✅ AXObserver 通知: `ui.observe` / `ax.event` (v1.2)、TS 側はイベントバッファ + `cu_observe` / `cu_events` / `cu_unobserve`
-7. iframe / OOPIF のスナップショット (進行中)
+7. ✅ iframe / OOPIF のスナップショット: 同一プロセス iframe は `getFullAXTree({frameId})`、OOPIF は `Target.setAutoAttach` で得た専用セッション。ref は (frame, backendDOMNodeId) で、OOPIF 内の座標は埋め込み元 `<iframe>` の位置を足してトップページの viewport 座標に変換する
 8. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー
 
 ## 9. 既知の制約・前提
@@ -262,7 +262,9 @@ cccu/
 - **CDP クライアント**: Node 22+ / Bun のグローバル WebSocket で自前実装 (`core/cdp.ts`)。ブラウザ接続 1 本 + flatten セッション
 - **ref の名前空間**: snapshot id の先頭文字で backend を判別する (`s` = desktop, `b` = browser)。ツール層はこれだけで振り分ける
 - **編集ショートカット**: macOS の Chrome は合成キーイベントの cmd+A 等を編集コマンドに変換しない。`Input.dispatchKeyEvent` の `commands` (selectAll など) を明示する
-- **AX ツリーの整形**: `generic` / `labeltext` / `menulistpopup` などの無名ラッパーは畳み、親と同じ静的テキストの子は落とす。`getFullAXTree` はメインフレームのみで iframe の中身は含まれない
+- **AX ツリーの整形**: `generic` / `labeltext` / `menulistpopup` などの無名ラッパーは畳み、親と同じ静的テキストの子は落とす
+- **iframe**: `getFullAXTree` は 1 フレーム分しか返さない。`iframe` ノードごとに `DOM.describeNode` で content frame の id を引き、同一プロセスなら同じセッションで `frameId` 指定、OOPIF (`Target.attachedToTarget` で type=iframe) なら専用セッションで取得して子としてぶら下げる。入力イベントは常にトップページのセッションへ送る
+- **AXObserver**: コールバックはメイン run loop で来る。`RunLoop.main.run()` 中に `DispatchQueue.main.sync` でリクエストを処理しているので、応答と通知は同じスレッドで直列化される
 
 実装で判明したこと (マイルストーン 2)
 - **前面化**: 非 GUI プロセスからの `NSRunningApplication.activate` は macOS 14+ で無視される。AX の `AXFrontmost` 属性設定で行い、ダメなら `NSWorkspace.openApplication` で再オープンする

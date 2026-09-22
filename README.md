@@ -44,7 +44,7 @@ printf '%s\n' '{"id":1,"method":"sys.hello","params":{}}' '{"id":2,"method":"app
 - Chrome via CDP: tabs, navigate, snapshot, find, click, type, keys, set value, wait — done (milestone 3)
 - Screenshot (`cu_screenshot`): windows, apps, display, tabs — done (desktop needs Screen Recording permission)
 - UI events (`cu_observe` / `cu_events`): AXObserver notifications for desktop apps — done
-- iframes/OOPIF in browser snapshots: in progress
+- iframes in browser snapshots: same-process frames and out-of-process (cross-site) frames are included and clickable — done
 
 ## Browser setup
 
