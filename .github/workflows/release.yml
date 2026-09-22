@@ -32,7 +32,9 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          IDS="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          IDENTITY="$(echo "$IDS" | grep 'Developer ID Application' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          [ -n "$IDENTITY" ] || IDENTITY="$(echo "$IDS" | grep 'Apple Development' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
           echo "CCCU_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
           echo "signing as: $IDENTITY"
 

@@ -21,7 +21,10 @@ sed "s/<string>[0-9.]*<\/string><!--version-->/<string>$VERSION<\/string><!--ver
 
 "$ROOT/bin/cccu-sign" "$APP"
 
-if [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_KEY_ISSUER:-}" ] && [ -n "${NOTARY_KEY_PATH:-}" ]; then
+AUTHORITY="$(codesign -dvv "$APP" 2>&1 | grep '^Authority=' | head -1)"
+if ! echo "$AUTHORITY" | grep -q 'Developer ID Application'; then
+  echo "[package] notarization skipped: signed with '${AUTHORITY#Authority=}', notarization needs a Developer ID Application identity"
+elif [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_KEY_ISSUER:-}" ] && [ -n "${NOTARY_KEY_PATH:-}" ]; then
   echo "[package] notarizing"
   ditto -c -k --keepParent "$APP" "$OUT/notarize.zip"
   xcrun notarytool submit "$OUT/notarize.zip" --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_KEY_ISSUER" --wait

@@ -48,6 +48,11 @@ screenshots do not on macOS 15+):
 
 `scripts/package-helper.sh [version]` is the same script the workflow runs; it works locally too (output in `dist/`).
 
+`scripts/setup-ci-signing.sh` fills those secrets: `create` makes a Developer ID Application certificate through the
+App Store Connect API (`ASC_KEY_ID`, `ASC_ISSUER`, `ASC_KEY_PATH`), builds the .p12 and imports it into your login
+keychain; `export "<identity name>"` uses an identity already in your keychain; `notary` registers the API key for
+notarization. Notarization only runs when the build is signed with a Developer ID identity.
+
 ## Releasing
 
 `claude plugin update` only picks up a new version number, so every release needs a bump:
