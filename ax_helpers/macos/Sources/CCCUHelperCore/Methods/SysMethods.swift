@@ -2,7 +2,7 @@ import Foundation
 import ApplicationServices
 import CoreGraphics
 
-public let protocolVersion = "1.3"
+public let protocolVersion = "1.4"
 public let helperVersion = "0.1.0"
 
 public enum Trust {
@@ -27,6 +27,7 @@ public func registerSysMethods(_ d: Dispatcher, shutdown: @escaping () -> Void) 
             "trusted": Trust.isTrusted,
             "screenRecording": CGPreflightScreenCaptureAccess(),
             "responsible": ProcessInfo.processInfo.environment[disclaimedEnv] != nil,
+            "activation": activationPolicy.rawValue,
             "capabilities": d.capabilities,
         ] as JSONObject
     }

@@ -38,7 +38,7 @@ final class ChromeAXE2ETests: XCTestCase {
         if bar.isEmpty { bar = refs(try call("ui.find", ["scope": ["pid": Int(pid)], "query": ["role": "textfield", "title": "Address"]]), "textfield") }
         let addr = try XCTUnwrap(bar.first)
         let typed = try call("input.type", ["ref": addr, "text": "https://www.iana.org/", "clear": true, "submit": true])
-        XCTAssertEqual(typed["method"] as? String, "keys")   // submit は実打鍵
+        XCTAssertTrue((typed["method"] as? String ?? "").hasPrefix("keys"))   // submit は実打鍵 (background では対象プロセスへ直送)
         _ = try call("ui.waitFor", ["scope": ["pid": Int(pid)], "condition": ["exists": ["role": "webarea", "title": "Internet Assigned Numbers Authority"]], "timeoutMs": 10000])
 
         // webarea 配下だけのスナップショットにブラウザ UI が混ざらない
@@ -49,7 +49,7 @@ final class ChromeAXE2ETests: XCTestCase {
 
         // ウェブ内容のリンクは実クリックで遷移する
         let link = try XCTUnwrap(refs(sub, "link \"Domain Names\"").first)
-        XCTAssertEqual(try call("ui.click", ["ref": link])["method"] as? String, "cg")
+        XCTAssertTrue((try call("ui.click", ["ref": link])["method"] as? String ?? "").hasPrefix("cg"))
         _ = try call("ui.waitFor", ["scope": ["pid": Int(pid)], "condition": ["gone": ["role": "webarea", "title": "Internet Assigned Numbers Authority"]], "timeoutMs": 10000])
     }
 }

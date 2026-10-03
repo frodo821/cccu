@@ -18,6 +18,16 @@ public func registerAppMethods(_ d: Dispatcher) {
         return ["apps": apps] as JSONObject
     }
 
+    // 起動するが前面化はしない (既に起動済みならその pid を返す)。v1.4
+    d.register("app.launch") { p in
+        let bundleId = try p.string("bundleId")
+        if let a = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
+            return ["pid": Int(a.processIdentifier), "launched": false] as JSONObject
+        }
+        let app = try launch(bundleId: bundleId, activates: p.optBool("activate") ?? false)
+        return ["pid": Int(app.processIdentifier), "launched": true] as JSONObject
+    }
+
     d.register("app.activate") { p in
         let app: NSRunningApplication
         if let pid = p.optInt("pid") {
@@ -40,14 +50,14 @@ public func registerAppMethods(_ d: Dispatcher) {
 }
 
 /// bundleId からアプリを起動し、起動完了まで同期的に待つ (最大 10 秒)。
-private func launch(bundleId: String) throws -> NSRunningApplication {
+private func launch(bundleId: String, activates: Bool = true) throws -> NSRunningApplication {
     guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else {
         throw HelperError.notFound("application \(bundleId)")
     }
     let sem = DispatchSemaphore(value: 0)
     var result: Result<NSRunningApplication, Error>?
     let config = NSWorkspace.OpenConfiguration()
-    config.activates = true
+    config.activates = activates
     NSWorkspace.shared.openApplication(at: url, configuration: config) { app, error in
         if let app = app { result = .success(app) } else { result = .failure(error ?? HelperError(.internalError, "launch failed")) }
         sem.signal()

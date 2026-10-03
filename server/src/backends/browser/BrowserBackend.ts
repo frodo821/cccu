@@ -489,7 +489,7 @@ export class BrowserBackend implements Backend {
     return "insertText";
   }
 
-  async key(target: string | undefined, key: string, modifiers: Modifier[] = []): Promise<void> {
+  async key(target: string | undefined, key: string, modifiers: Modifier[] = []): Promise<string> {
     const s = target ? await this.session(this.targetIdOf(target)) : [...this.sessions.values()].at(-1);
     if (!s) throw new HelperError("INVALID_PARAMS", "no browser tab in use; pass a target");
     const d = describeKey(key);
@@ -503,12 +503,14 @@ export class BrowserBackend implements Backend {
       ...(commands ? { commands } : {}),
     });
     await this.send(s, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
+    return "cdp";
   }
 
-  async scroll(ref: Ref, dx: number, dy: number): Promise<void> {
+  async scroll(ref: Ref, dx: number, dy: number): Promise<string> {
     const el = this.resolve(ref);
     const { cx: x, cy: y } = await this.absoluteBox(el);
     await this.send(el.frame.session.page, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: dx, deltaY: dy });
+    return "cdp";
   }
 
   async setValue(ref: Ref, value: string | number | boolean): Promise<void> {

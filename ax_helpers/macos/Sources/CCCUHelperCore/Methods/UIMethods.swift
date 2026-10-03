@@ -6,12 +6,14 @@ public func registerUIMethods(_ d: Dispatcher) {
     d.register("ui.snapshot") { p in
         try Trust.require()
         let root = try p.scopeRoot()
+        waitForAXReady(root)
         return snapshotResult(SnapshotBuilder.build(root: root, options: p.snapshotOptions()))
     }
 
     d.register("ui.find") { p in
         try Trust.require()
         let root = try p.scopeRoot()
+        waitForAXReady(root)
         let match = try p.findQuery()
         var opts = p.snapshotOptions()
         opts.maxNodes = p.optInt("maxNodes") ?? 5000
@@ -55,17 +57,21 @@ public func registerUIMethods(_ d: Dispatcher) {
         let button = p.optString("button")
         let count = p.optInt("count") ?? 1
         let mods = p.modifiers()
+        let fg = wantsForeground(p.optBool("foreground") ?? false)
         if let el = try p.optRef() {
             let plain = (button ?? "left") == "left" && count == 1 && mods.isEmpty
             if plain, !el.isWebContent, el.actionNames().contains(kAXPressAction) {
-                bringToFront(el)
-                try el.perform(kAXPressAction)
-                return ["method": "ax"] as JSONObject
+                // AXPress は多くの場合アプリが背面のままでも動く。ただしキーウィンドウに依存する操作 (書式の切り替えなど) は
+                // 背面だと黙って無効になるので、効かなければ foreground: true で再試行する
+                try act(el.pid, window: el.window, foreground: fg) { try el.perform(kAXPressAction) }
+                return ["method": fg ? "ax+foreground" : "ax"] as JSONObject
             }
             guard let c = el.center else { throw HelperError(.unsupported, "element has no frame to click") }
-            bringToFront(el)
-            try Input.click(at: c, button: button, count: count, modifiers: mods)
-            return ["method": "cg"] as JSONObject
+            // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
+            try withForeground(el.pid, window: el.window) {
+                try Input.click(at: c, button: button, count: count, modifiers: mods)
+            }
+            return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
         try Input.click(at: pt, button: button, count: count, modifiers: mods)
@@ -118,7 +124,6 @@ func bringToFront(_ el: AXElement) {
 }
 
 func focus(_ el: AXElement) throws {
-    bringToFront(el)
     if el.isFocused { return }
     if el.isSettable(kAXFocusedAttribute) {
         try? el.set(kAXFocusedAttribute, kCFBooleanTrue)
@@ -127,6 +132,14 @@ func focus(_ el: AXElement) throws {
         if el.isFocused { return }
     }
     guard let c = el.center else { throw HelperError(.unsupported, "element cannot be focused") }
-    try Input.click(at: c)
-    Thread.sleep(forTimeInterval: 0.05)
+    try withForeground(el.pid, window: el.window) {
+        try Input.click(at: c)
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+}
+
+/// アプリ要素の子が一時的に取れない (前面化・復帰の直後など) 場合に短く待つ
+func waitForAXReady(_ root: AXElement) {
+    guard root.role == kAXApplicationRole else { return }
+    for _ in 0..<5 where root.children.isEmpty { spin(0.1) }
 }

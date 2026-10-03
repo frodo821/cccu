@@ -257,7 +257,8 @@ cccu/
 8. ✅ ブラウザのイベント購読 (ナビゲーション、ロード、ダイアログ、コンソール、例外、タブ) と `cu_dialog`
 9. ✅ 普段の Chrome を AX ツリーで操作 (設定不要)。`within` による部分木スナップショット、`cu_browser status/launch`
 10. ✅ プラットフォーム判定 (`bin/cccu-platform`, `core/platform.ts`) と macOS 以外の明示的な拒否。prebuilt ヘルパーの配布 (`release.yml`: universal ビルド、Developer ID 署名 (secret があれば)、公証 (任意)、build provenance attestation、`bin/cccu-fetch-helper` が `gh attestation verify` で検証して配置)
-11. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー、Chrome 拡張による CDP 中継 (普段の Chrome で CDP 品質を得る選択肢)、AX ツリー破損時のグリッド付きスクリーンショットによるフォールバック、操作後の差分スナップショット
+11. ✅ 背面操作を既定に (前面化ポリシー、メニュー経由のショートカット、`postToPid`、前面化が必要な場合の自動復帰、`foreground` 指定)
+12. 今後: Windows (UIA) / Linux (AT-SPI) ヘルパー、Chrome 拡張による CDP 中継 (普段の Chrome で CDP 品質を得る選択肢)、AX ツリー破損時のグリッド付きスクリーンショットによるフォールバック、操作後の差分スナップショット
 
 ## 9. 既知の制約・前提
 
@@ -273,6 +274,10 @@ cccu/
 - **Chrome のアドレスバー**: AX で挿入した文字列は表示されるが「ユーザー入力」として扱われず、Enter で遷移しない。末尾 1 文字だけ打鍵しても同期しない。`submit` 時は全文を実打鍵する (`input.type` の `method`、v1.3)
 - **Chrome のウェブ内容の AXPress**: 成功を返すが実行されないことがある。`AXWebArea` の子孫は実マウスクリックにする
 - **Chrome の AX ノイズ**: 全 `group` に AXFocused 設定可と空文字の AXValue、多くのノードに AXExpanded=false が付く。コンテナは操作可能扱いにしない、空文字は値なし、expanded/collapsed は意味のあるロールだけ表示する
+- **背面操作 (v1.4)**: AX の読み取り、AXPress、値の設定、`postToPid` による打鍵は対象アプリが背面のままで動く。背面で動かないのは「キーウィンドウに依存するもの」: ウィンドウ対象のメニューコマンド (閉じる・保存。背面アプリにはキーウィンドウが無く、メニュー項目が無効になる)、書式の切り替えなど。`postToPid` で送った cmd ショートカットも効かない。`postToPid` で送ったキーは TextEdit には届くが、cmd ショートカットは効かず、Chrome はそもそも受け付けない (黙って無効になる)。そこで (1) ショートカットは AX のメニュー項目を AXPress、(2) 項目が無効か見つからない場合と、合成イベントが必要な操作全般 (実キー、打鍵、実クリック、スクロール) は一瞬前面化して HID に送り、元のアプリへ戻す、(3) `postToPid` は `CCCU_DIRECT_INPUT=1` のときだけ使う、とした。打鍵と Enter は 1 回の前面化の中でまとめて行う
+- **打鍵の補正**: 前面化や AX での値設定の直後は Unicode 打鍵が落ちることがある。打つ前に 0.12 秒待ち、打鍵後の値が「打つ前の値 + 入力」と違えば期待値を AX で設定する (既存の内容を消さない)。打鍵モードのクリアはキー操作 (cmd+A → Backspace) で行う。AX で空にすると直後の打鍵が落ち、Chrome のアドレスバーでは「ユーザー入力」扱いにならない
+- **リクエストはメインキューのブロックとして実行しない**: `DispatchQueue.main.sync` の中で処理すると、処理中はメインキューが塞がり、フォーカス変更の通知 (メインキュー経由) が run loop を回しても処理されない。その結果 `NSWorkspace.frontmostApplication` が古いままになり、前面化の完了待ちが必ずタイムアウトし、復帰の判定も誤る。`CFRunLoopPerformBlock` で run loop のブロックとして実行し、待機は `spin()` (run loop を回す) で行う。以前観測した「`isActive` が更新されない」も同じ原因だった
+- **前面化の方法**: `AXFrontmost` は Terminal などでは数十 ms で効くが TextEdit では効かない。`NSRunningApplication.activate` は GUI を持たないプロセスからは無視される。確実なのは `NSWorkspace.openApplication` (再オープン) で、AX を 0.12 秒だけ試してからこれに落とす
 - **AXObserver**: コールバックはメイン run loop で来る。`RunLoop.main.run()` 中に `DispatchQueue.main.sync` でリクエストを処理しているので、応答と通知は同じスレッドで直列化される
 
 実装で判明したこと (マイルストーン 2)

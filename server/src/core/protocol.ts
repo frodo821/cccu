@@ -32,6 +32,7 @@ export interface HelloResult {
   trusted: boolean;            // Accessibility
   screenRecording?: boolean;   // v1.3
   responsible?: boolean;       // v1.3: ヘルパー自身が TCC の責任プロセスか
+  activation?: "background" | "restore" | "foreground";   // v1.4: 前面化ポリシー
   capabilities: string[];
 }
 
@@ -52,6 +53,7 @@ export interface Methods {
   "sys.shutdown": { params: Record<string, never>; result: Record<string, never> };
   "app.list": { params: Record<string, never>; result: { apps: AppInfo[] } };
   "app.activate": { params: { pid: number } | { bundleId: string }; result: { pid: number } };
+  "app.launch": { params: { bundleId: string; activate?: boolean }; result: { pid: number; launched: boolean } };
   "window.list": { params: { pid?: number }; result: { windows: WindowInfo[] } };
   "window.raise": { params: { pid: number; windowNumber: number }; result: Record<string, never> };
   "ui.snapshot": {
@@ -63,17 +65,17 @@ export interface Methods {
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
   "ui.click": {
-    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[] };
-    result: { method: "ax" | "cg" };
+    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean };
+    result: { method: string };
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
   "ui.waitFor": {
     params: { scope: Scope; condition: { exists: FindQuery } | { gone: FindQuery } | { stable: number }; timeoutMs: number };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax" }; result: { method: string } };
-  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number }; result: Record<string, never> };
-  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number }; result: Record<string, never> };
+  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };
+  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string } };
+  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean }; result: { method: string } };
   "input.mouse": {
     params: { point: Point; action: "move" | "down" | "up" | "drag"; to?: Point; button?: "left" | "right" };
     result: Record<string, never>;

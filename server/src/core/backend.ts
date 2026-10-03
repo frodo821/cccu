@@ -28,10 +28,11 @@ export interface Backend {
   find(target: string, query: FindQuery, opts?: SnapshotOptions): Promise<SnapshotResult>;
   waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult>;
 
-  click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[] }): Promise<string>;
-  type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean }): Promise<string>;
-  key(target: string | undefined, key: string, modifiers?: Modifier[]): Promise<void>;
-  scroll(ref: Ref, dx: number, dy: number): Promise<void>;
+  /** foreground: 効かなかった操作を「一瞬前面化して実行し、元のアプリへ戻す」でやり直すための指定 (desktop のみ意味を持つ) */
+  click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean }): Promise<string>;
+  type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string>;
+  key(target: string | undefined, key: string, modifiers?: Modifier[], opts?: { foreground?: boolean }): Promise<string>;
+  scroll(ref: Ref, dx: number, dy: number, opts?: { foreground?: boolean }): Promise<string>;
   setValue(ref: Ref, value: string | number | boolean): Promise<void>;
   focus(ref: Ref): Promise<void>;
   attributes(ref: Ref, names?: string[]): Promise<Record<string, unknown>>;

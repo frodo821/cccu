@@ -25,6 +25,7 @@ const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optiona
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
 const targetArg = z.string().describe('"app:<pid>", "window:<pid>:<n>", a bundle id like com.apple.TextEdit, or "tab:<id>" for a Chrome tab');
 const findShape = { role: z.string().optional(), text: z.string().optional(), value: z.string().optional() };
+const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
 const withinArg = z.string().optional().describe('Limit to the subtree of this ref (e.g. the "webarea" of a Chrome window to skip the browser chrome)');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
@@ -95,26 +96,26 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     }));
 
   server.registerTool("cu_click",
-    { description: "Click an element (accessibility press when possible, otherwise a real click at its center).",
-      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers } },
+    { description: "Click an element (accessibility press when possible, otherwise a real click at its center). Runs in the background by default; if the UI did not change, retry with foreground: true.",
+      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg } },
     ({ ref, ...opts }) => run(async () => { const [b, r] = byRef(ref); return text(`clicked ${ref} via ${await b.click(r, opts)}`); }));
 
   server.registerTool("cu_type",
     { description: "Type text into an element (focuses it first). Without ref, types into whatever has focus. clear replaces existing text; submit presses Enter afterwards.",
-      inputSchema: { ref: refArg.optional(), text: z.string(), clear: z.boolean().optional(), submit: z.boolean().optional() } },
+      inputSchema: { ref: refArg.optional(), text: z.string(), clear: z.boolean().optional(), submit: z.boolean().optional(), foreground: foregroundArg } },
     ({ ref, text: t, ...opts }) => run(async () => {
       const [b, r] = ref ? byRef(ref) : [ctx.backends[0], undefined];
       return text(`typed via ${await b.type(r, t, opts)}`);
     }));
 
   server.registerTool("cu_key",
-    { description: "Press a key with optional modifiers, e.g. key=\"n\" modifiers=[\"cmd\"]. Key names follow KeyboardEvent.key (Enter, Escape, ArrowDown, Tab, a, F5). target picks the app/tab.",
-      inputSchema: { target: targetArg.optional(), key: z.string(), modifiers } },
-    ({ target, key, modifiers: m }) => run(async () => { await (target ? byTarget(target) : ctx.backends[0]).key(target, key, m); return text("ok"); }));
+    { description: "Press a key with optional modifiers, e.g. key=\"n\" modifiers=[\"cmd\"]. Key names follow KeyboardEvent.key (Enter, Escape, ArrowDown, Tab, a, F5). target picks the app/tab. Desktop shortcuts run through the app's menu without bringing it to the front when possible.",
+      inputSchema: { target: targetArg.optional(), key: z.string(), modifiers, foreground: foregroundArg } },
+    ({ target, key, modifiers: m, foreground }) => run(async () => text(`ok via ${await (target ? byTarget(target) : ctx.backends[0]).key(target, key, m, { foreground })}`)));
 
   server.registerTool("cu_scroll",
-    { description: "Scroll at an element (positive dy scrolls down).", inputSchema: { ref: refArg, dx: z.number().int().optional(), dy: z.number().int().optional() } },
-    ({ ref, dx = 0, dy = 0 }) => run(async () => { const [b, r] = byRef(ref); await b.scroll(r, dx, dy); return text("ok"); }));
+    { description: "Scroll at an element (positive dy scrolls down).", inputSchema: { ref: refArg, dx: z.number().int().optional(), dy: z.number().int().optional(), foreground: foregroundArg } },
+    ({ ref, dx = 0, dy = 0, foreground }) => run(async () => { const [b, r] = byRef(ref); return text(`ok via ${await b.scroll(r, dx, dy, { foreground })}`); }));
 
   server.registerTool("cu_set_value",
     { description: "Set an element's value directly (checkbox: true/false, slider: number, text field / select: string).",

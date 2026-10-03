@@ -1,4 +1,4 @@
-# cccu helper protocol v1.3
+# cccu helper protocol v1.4
 
 MCP サーバー (クライアント) と OS 別アクセシビリティヘルパー (サーバー) の間の契約。
 `ax_helpers/*` の実装はすべてこの文書に従う。設計背景は `DESIGN.md` §4。
@@ -75,6 +75,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 |--------|--------|--------|
 | `app.list` | `{}` | `{apps: [{pid, name, bundleId?, frontmost, hidden}]}` |
 | `app.activate` | `{pid}` \| `{bundleId}` | `{pid}` — 未起動なら起動して待つ。前面化は AXFrontmost 属性で行う (非 GUI プロセスからの NSRunningApplication.activate は macOS 14+ で無視される) |
+| `app.launch` | `{bundleId, activate?: boolean}` | `{pid, launched: boolean}` — 起動済みならその pid。未起動なら起動する。`activate` 省略時は前面化しない (v1.4) |
 | `window.list` | `{pid?}` | `{windows: [{pid, windowNumber, title, frame: Rect, focused, minimized}]}` |
 | `window.raise` | `{pid, windowNumber}` | `{}` |
 
@@ -113,6 +114,24 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 |--------|--------|--------|
 | `screen.capture` | `{pid?: int, windowNumber?: int, display?: int, maxWidth?: int}` | `{pngBase64: string, scale: number, frame: Rect, width: int, height: int}` — `pid` のみならメインウィンドウ、どちらも無ければメインディスプレイ。`maxWidth` (既定 1600) に縮小。Screen Recording 未許可なら `NOT_TRUSTED` + `data.permission = "screenRecording"` (v1.1) |
 
+### 前面化ポリシー (v1.4)
+
+操作系メソッド (`ui.click` / `ui.focus` / `input.type` / `input.key` / `input.scroll`) は、既定で対象アプリを前面に出したままにしない。
+
+- **AX で完結する操作は背面のまま**: AXPress、値の設定、`AXSelectedText` によるテキスト挿入、有効なメニュー項目の実行
+- **合成イベントが必要な操作は「一瞬前面化 → HID へ送る → 元の最前面アプリへ復帰」**: 実キー、打鍵モードの入力 (`method: "keys"` と `submit`)、実マウスクリック (ウェブ内容など)、スクロール。合成イベントは最前面のアプリにしか確実に届かないため
+- 各メソッドは `foreground?: boolean` を受ける。true なら AX の操作も「前面化 → 操作 → 復帰」で実行する (背面で効かなかった操作の再試行用)
+- 環境変数:
+  - `CCCU_ACTIVATION`: `background` (既定) / `restore` (全操作を前面化 + 復帰で行う) / `foreground` (前面に出したまま。従来の挙動)。`sys.hello` の `activation` で確認できる
+  - `CCCU_DIRECT_INPUT=1`: 修飾なしのキー・打鍵・スクロールを `postToPid` で対象プロセスへ直送し、前面化しない。AppKit のアプリでは届くが、Chrome などは受け付けず黙って無効になる
+- 戻り値の `method` が実際の経路を示す:
+  - `ui.click`: `ax` (AXPress、背面のまま) / `ax+foreground` / `cg+restore` (実クリック) / `cg`
+  - `input.key`: `menu` (ショートカットに対応するメニュー項目を AXPress、`item` に項目名) / `hid+restore` / `pid` (直送) / `hid`
+  - `input.type`: `selectedText` / `value` (背面のまま) / `keys+restore` (実打鍵) / `keys(pid)` (直送)。打鍵が落ちて AX で補正した場合は `(corrected)` が付く
+  - `input.scroll`: `hid+restore` / `pid` / `hid`
+- キーウィンドウに依存する操作 (書式の切り替え、ウィンドウ対象のメニューコマンドなど) は背面では効かない。メニュー項目が無効な場合、`input.key` は自動で `hid+restore` に落ちる。AXPress が効かなかった場合はクライアントが `foreground: true` で再試行する
+- `input.type` を ref なしで呼ぶと、その時点でキーボードフォーカスを持つ要素 (背面操作中はユーザーのアプリ) に入力される。背面操作では必ず ref を渡す
+
 ## 6. スナップショット記法
 
 ```
@@ -145,6 +164,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.4: 前面化ポリシー (既定で背面操作)、`foreground` パラメータ、`app.launch`、操作系メソッドが `method` を返す
 - 1.3: `input.type` に `method` を追加、`submit` 時は実打鍵が既定
 - 1.2: `ui.observe` / `ui.unobserve` と `ax.event` 通知
 - 1.1: `screen.capture` 実装、`maxWidth` / `width` / `height` 追加

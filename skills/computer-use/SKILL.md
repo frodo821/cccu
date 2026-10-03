@@ -34,6 +34,14 @@ Events
 Screenshots
 - `cu_screenshot` is supplementary: read UI through snapshots, and take a screenshot only to confirm visual state (layout, images, colors). Desktop capture needs Screen Recording permission; on `NOT_TRUSTED` with `permission: screenRecording`, tell the user and continue with snapshots.
 
+Background operation
+- Actions avoid leaving the app in front of the user. Accessibility presses, value changes, text insertion and menu shortcuts stay in the background; real keys, `submit: true` typing, clicks on web content and scrolling activate the app for a moment and then return focus (`...+restore`). Each action reports the path it took (`ax`, `menu`, `keys+restore`, `cg+restore`, ...).
+- Keep the flicker low: batch text with `cu_type` instead of sending keys one by one, and use `submit: true` rather than a separate Enter.
+- Some things only work when the app is active (formatting toggles, anything that acts on the key window). After an action, check the result (snapshot / `cu_find` / `cu_wait`). If nothing changed, repeat the same action with `foreground: true`: it activates the app briefly, acts, and gives focus back.
+- Prefer elements over keystrokes when both exist: a window's `closebutton`, a sheet's buttons and menu items work in the background; cmd+W needs a brief activation.
+- `cu_type` without a ref types into whatever currently has keyboard focus, which is the user's app, not your target. In the background always pass a ref.
+- Only use `cu_activate` when the user asked to see the app or a screenshot needs the window on top.
+
 Rules
 - Never guess refs. If an element is missing from the snapshot, snapshot again or `cu_find` it.
 - If a tool returns `NOT_TRUSTED`, tell the user to allow "cccu-helper" in System Settings > Privacy & Security (Accessibility, or Screen Recording for desktop screenshots). No restart is needed; retry the tool once they have done it.

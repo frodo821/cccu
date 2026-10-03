@@ -53,7 +53,8 @@ final class TextEditE2ETests: XCTestCase {
         let area = try XCTUnwrap(refOf("textarea", in: found))
 
         _ = try call("input.type", ["ref": area, "text": "Hello from cccu\n", "clear": true])   // AXValue 経路
-        _ = try call("input.type", ["text": "typed"])                                           // CGEvent 経路
+        let keyed = try call("input.type", ["ref": area, "text": "typed", "method": "keys"])   // 実打鍵の経路
+        XCTAssertTrue((keyed["method"] as? String ?? "").hasPrefix("keys"))
         let attrs = try call("ui.attributes", ["ref": area, "names": ["AXValue"]])["attributes"] as! JSONObject
         XCTAssertEqual(attrs["AXValue"] as? String, "Hello from cccu\ntyped")
 

@@ -119,3 +119,32 @@ final class SnapshotTests: XCTestCase {
         for m in expected { XCTAssertTrue(d.capabilities.contains(m), "missing \(m)") }
     }
 }
+
+final class ActivationTests: XCTestCase {
+    func testMenuShortcutModifierMask() {
+        XCTAssertNil(MenuShortcut.modifierMask([]))                 // cmd を含まないものは対象外
+        XCTAssertNil(MenuShortcut.modifierMask(["shift"]))
+        XCTAssertEqual(MenuShortcut.modifierMask(["cmd"]), 0)
+        XCTAssertEqual(MenuShortcut.modifierMask(["cmd", "shift"]), 1)
+        XCTAssertEqual(MenuShortcut.modifierMask(["cmd", "alt"]), 2)
+        XCTAssertEqual(MenuShortcut.modifierMask(["cmd", "shift", "alt", "ctrl"]), 7)
+    }
+
+    func testActivationPolicyParsing() {
+        XCTAssertEqual(ActivationPolicy(rawValue: "background"), .background)
+        XCTAssertEqual(ActivationPolicy(rawValue: "restore"), .restore)
+        XCTAssertEqual(ActivationPolicy(rawValue: "foreground"), .foreground)
+        XCTAssertNil(ActivationPolicy(rawValue: "nope"))
+    }
+
+    func testAppLaunchRequiresBundleIdAndRejectsUnknown() {
+        let d = makeDispatcher(shutdown: {})
+        if case .error(_, let e) = d.handle(Request(json: ["id": 1, "method": "app.launch", "params": [:]])!) {
+            XCTAssertEqual(e.kind, .invalidParams)
+        } else { XCTFail() }
+        if case .error(_, let e) = d.handle(Request(json: ["id": 1, "method": "app.launch", "params": ["bundleId": "invalid.does.not.exist"]])!) {
+            XCTAssertEqual(e.kind, .notFound)
+        } else { XCTFail() }
+        XCTAssertTrue(d.capabilities.contains("app.launch"))
+    }
+}

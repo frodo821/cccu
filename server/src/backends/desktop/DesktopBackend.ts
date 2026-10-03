@@ -34,7 +34,9 @@ export class DesktopBackend implements Backend {
   private async resolveTarget(target: string): Promise<ParsedTarget> {
     const t = parseTarget(target);
     if (t.kind === "bundle") {
+      // bundle id → pid。起動していなければ起動するが、前面化はしない (読み取りや背面操作のたびに最前面へ出さない)
       const h = await this.helper();
+      if (h.has("app.launch")) return { kind: "app", pid: (await h.call("app.launch", { bundleId: t.bundleId })).pid };
       return { kind: "app", pid: (await h.call("app.activate", { bundleId: t.bundleId })).pid };
     }
     return t;
@@ -65,6 +67,7 @@ export class DesktopBackend implements Backend {
     const t = await this.resolveTarget(target);
     if (t.kind === "window") { await h.call("window.raise", { pid: t.pid, windowNumber: t.windowNumber }); return `raised ${target}`; }
     if (t.kind !== "app") throw new HelperError("UNSUPPORTED", `cannot activate ${target}`);
+    // cu_activate は明示的な前面化の依頼なので、ここだけは必ず最前面にする
     await h.call("app.activate", { pid: t.pid });
     return `activated app:${t.pid}`;
   }
@@ -79,19 +82,20 @@ export class DesktopBackend implements Backend {
   async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs });
   }
-  async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[] }): Promise<string> {
+  async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean }): Promise<string> {
     return (await (await this.helper()).call("ui.click", { ref, ...opts })).method;
   }
-  async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean }): Promise<string> {
+  async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string> {
     return (await (await this.helper()).call("input.type", { ref, text, ...opts })).method;
   }
-  async key(target: string | undefined, key: string, modifiers?: Modifier[]): Promise<void> {
+  async key(target: string | undefined, key: string, modifiers?: Modifier[], opts: { foreground?: boolean } = {}): Promise<string> {
     const h = await this.helper();
     const pid = target ? (await this.scope(target) as { pid: number }).pid : undefined;
-    await h.call("input.key", { key, modifiers, pid });
+    const r = await h.call("input.key", { key, modifiers, pid, ...opts });
+    return r.item ? `${r.method} "${r.item}"` : r.method;
   }
-  async scroll(ref: Ref, dx: number, dy: number): Promise<void> {
-    await (await this.helper()).call("input.scroll", { ref, dx, dy });
+  async scroll(ref: Ref, dx: number, dy: number, opts: { foreground?: boolean } = {}): Promise<string> {
+    return (await (await this.helper()).call("input.scroll", { ref, dx, dy, ...opts })).method;
   }
   async setValue(ref: Ref, value: string | number | boolean): Promise<void> {
     await (await this.helper()).call("ui.setAttribute", { ref, name: "AXValue", value });

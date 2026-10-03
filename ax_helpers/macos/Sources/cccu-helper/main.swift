@@ -22,13 +22,25 @@ if args.contains("--setup-permissions") {
 
 let dispatcher = makeDispatcher(shutdown: { exit(0) })
 
+// リクエストはメインスレッドで処理するが、DispatchQueue.main.sync には載せない。
+// メインキューのブロック内で処理すると、処理中はメインキューが塞がり、フォーカス変更などの通知
+// (メインキュー経由で届く) が run loop を回しても処理されず、アクティブなアプリの状態が古いままになる。
+// run loop のブロックとして実行すれば、ハンドラ内で run loop を回したときにメインキューも処理される
+func onMainRunLoop(_ block: @escaping () -> Void) {
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
+    CFRunLoopWakeUp(CFRunLoopGetMain())
+}
+
 let reader = Thread {
     while let line = readLine(strippingNewline: true) {
-        DispatchQueue.main.sync {
+        let done = DispatchSemaphore(value: 0)
+        onMainRunLoop {
             if let response = handleLine(line, dispatcher: dispatcher) { Transport.send(response) }
+            done.signal()
         }
+        done.wait()
     }
-    DispatchQueue.main.async { exit(0) }   // stdin EOF
+    onMainRunLoop { exit(0) }   // stdin EOF
 }
 reader.start()
 Transport.log("started (protocol \(protocolVersion), helper \(helperVersion))")

@@ -125,6 +125,23 @@ open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$H
 `cu_navigate` to a new tab launches it automatically when nothing is connected. Endpoint: `CCCU_CDP_URL`
 (default `http://127.0.0.1:9222`). `cu_browser status` explains the current state either way.
 
+## Staying out of your way
+
+By default the helper does not leave the app it is driving in front of you.
+
+- Reads, accessibility presses, setting values, inserting text and enabled menu items (shortcuts are executed through
+  the app's menu) work while the app stays in the background.
+- Anything that needs synthetic input (real key presses, keystroke typing such as `submit: true`, real mouse clicks on
+  web content, scrolling) activates the app for a moment, acts, and returns focus to whatever you were using. Expect a
+  brief flicker for those, typically well under a second.
+- Some accessibility presses only take effect in an active app (formatting toggles, anything tied to the key window).
+  Every action tool takes `foreground: true` to redo such an action with the activate-act-return sequence.
+
+`CCCU_ACTIVATION` changes the default: `background` (default), `restore` (every action activates then returns focus),
+or `foreground` (activate and stay, the old behaviour). `CCCU_DIRECT_INPUT=1` posts keys straight to the target
+process without activating it; that works in AppKit apps but Chrome silently ignores such events. `cu_activate`
+always brings the target to the front.
+
 ## Permissions
 
 The helper makes itself the responsible process for macOS privacy permissions, so they are granted to **cccu-helper**
