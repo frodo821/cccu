@@ -84,6 +84,7 @@ public func registerUIMethods(_ d: Dispatcher) {
             let frame1 = el.frame
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             let force = p.optBool("force") ?? false
+            var retried = false
             var diag: [String: Any] = ["ref": refName, "role": el.role ?? "?", "name": el.title ?? el.descriptionText ?? "", "frame0": frame0 ?? "nil", "frame1": frame1 ?? "nil", "center": c]
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
@@ -116,15 +117,26 @@ public func registerUIMethods(_ d: Dispatcher) {
                 let recheckLogged: (CGPoint) -> CGPoint? = { pt in let r = recheck(pt); if let r = r { pressed = r; diag["recheckMoved"] = true }; return r }
                 diag["hitTries"] = tries; diag["frame2"] = el.frame ?? "nil"
                 try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheckLogged)
-                // 押下後の状態: 要素 (またはその祖先) にフォーカスが移ったか、押下点に今あるもの、frame の変化。効かなかったクリックの手がかり
-                spin(0.05)
+                // 押下後の確認: AX の frame はスクロール直後に描画より遅れて更新されるので、押した点が (更新後の) frame の外に
+                // 出ていたら、押下は別の場所に落ちている。その場合だけ新しい中心でもう 1 回押す
+                spin(0.15)
                 diag["pressed"] = pressed
-                diag["frame3"] = el.frame ?? "nil"
+                let after = el.frame
+                diag["frame3"] = after ?? "nil"
                 diag["focusedAfter"] = el.isFocused || (el.element(kAXParentAttribute)?.isFocused ?? false)
                 diag["hitAfter"] = elementAt(pressed).map { "\($0.role ?? "?") \($0.title ?? "")" } ?? "nil"
+                if let a = after, a.width > 2, a.height > 2, !a.insetBy(dx: -1, dy: -1).contains(pressed), count == 1 {
+                    let c2 = CGPoint(x: a.midX, y: a.midY)
+                    if let h = elementAt(c2), h.isRelated(to: el) {
+                        try Input.click(at: c2, size: a.size, button: button, count: 1, modifiers: mods, mode: pointer)
+                        diag["retried"] = c2
+                        retried = true
+                    }
+                }
             }
             Diag.log("click", diag)
-            return ["method": activationPolicy == .foreground || Session.isActive ? "cg" : "cg+restore"] as JSONObject
+            let base = activationPolicy == .foreground || Session.isActive ? "cg" : "cg+restore"
+            return ["method": retried ? base + " (element moved after scrolling; pressed again at its new position)" : base] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
         try UserActivity.guarded { try Input.click(at: pt, button: button, count: count, modifiers: mods, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode) }

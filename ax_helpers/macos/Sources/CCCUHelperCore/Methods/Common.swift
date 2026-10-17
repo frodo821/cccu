@@ -176,6 +176,9 @@ extension AXElement {
         }
         if !usable(f), actionNames().contains("AXScrollToVisible") {
             try? perform("AXScrollToVisible")
+            // Chrome のスムーズスクロールは約 0.3 秒。AX の frame は描画より遅れて更新され、途中で「安定」に見えることがあるので、
+            // まず最低限待ってから安定を確認する
+            spin(0.3)
             f = settleFrame(from: f, usable: usable)
         }
         // AXScrollToVisible が端に寄せただけで一部が切れている (または効かなかった) 場合は、はみ出した分だけ実スクロールで寄せる
@@ -225,6 +228,26 @@ extension AXElement {
             cur = c.element(kAXParentAttribute)
         }
         return center.map { ($0, nil) }
+    }
+
+    /// アプリ要素に対して: フォーカス中 (なければメイン、なければ最初) のウィンドウ内で最も外側の AXWebArea を幅優先で探す
+    func outermostWebArea() -> AXElement? {
+        let windows = elements(kAXWindowsAttribute)
+        let ordered = [element(kAXFocusedWindowAttribute), element(kAXMainWindowAttribute)].compactMap { $0 } + windows
+        var seen = Set<Int>()
+        for w in ordered {
+            let key = w.windowNumber
+            if key != 0 { if seen.contains(key) { continue }; seen.insert(key) }
+            var queue: [(AXElement, Int)] = [(w, 0)]
+            var idx = 0
+            while idx < queue.count {
+                let (e, d) = queue[idx]; idx += 1
+                if e.role == "AXWebArea" { return e }
+                if d < 12 { for c in e.children { queue.append((c, d + 1)) } }
+                if queue.count > 3000 { break }
+            }
+        }
+        return nil
     }
 
     /// 最寄りのスクロール領域 (webarea / scrollarea) とウィンドウの共通部分
@@ -292,6 +315,15 @@ extension Params {
         // NSRunningApplication の照会は前面化の直後などに一時的に失敗することがあるので、プロセスの存在は kill(0) で見る
         guard kill(pid, 0) == 0 || errno == EPERM else { throw HelperError.notFound("pid \(pid)") }
         let app = AXElement.application(pid: pid)
+        if s.optBool("webarea") == true {
+            // ブラウザのページ (最前面ウィンドウの最も外側の AXWebArea)。読み込み直後は無いことがあるので短く待つ
+            let deadline = Date().addingTimeInterval(1.0)
+            repeat {
+                if let w = app.outermostWebArea() { return w }
+                spin(0.1)
+            } while Date() < deadline
+            return app
+        }
         if let wn = s.optInt("windowNumber") {
             guard let w = app.elements(kAXWindowsAttribute).first(where: { $0.windowNumber == wn }) else {
                 throw HelperError.notFound("window \(wn) in pid \(pid)")

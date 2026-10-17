@@ -239,6 +239,9 @@ final class QueryTests: XCTestCase {
         XCTAssertEqual(try names("webarea >> text", t).count, 2)
         XCTAssertEqual(try names("group:not(:has(\"正解は\")) > button:not([name=確認])", t), ["button:Could you"])
         XCTAssertEqual(try names("heading, link", t).count, 3)
+        XCTAssertEqual(try names("group:has(> text) > button", t), ["button:確認"], ":has(> X) は直接の子")
+        XCTAssertEqual(try names("heading:has(+ group:has(\"正解は\"))", t), ["heading:Q1"], ":has(+ X) は次の兄弟")
+        XCTAssertEqual(try names("heading:has(~ link)", t).count, 2)
     }
     func testParseErrors() {
         XCTAssertThrowsError(try Query.parse("button["))

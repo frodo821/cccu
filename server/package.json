@@ -1,6 +1,6 @@
 {
   "name": "@cccu/server",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "private": true,
   "type": "module",
   "description": "MCP server for cccu: accessibility-tree driven browser and desktop control",

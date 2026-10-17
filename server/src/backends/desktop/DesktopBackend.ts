@@ -55,6 +55,9 @@ export class DesktopBackend implements Backend {
     // ブラウザは既定でページ (webarea) に絞る。タブバーや拡張機能、メニューバーで ref が埋まるのを避ける。
     // ブラウザ UI が必要なときは scope: "app" か、within にウィンドウの ref を渡す
     if (scope !== "app" && t.kind === "app" && (await this.isBrowser(t.pid))) {
+      // 新しいヘルパーはページ (webarea) を自分で解決する (スナップショットを 1 回節約し、読み込み直後は短く待つ)
+      const h = await this.helper();
+      if (parseInt(h.info.protocolVersion.split(".")[1] ?? "0", 10) >= 12) return { pid: t.pid, webarea: true };
       const page = await this.focusedWebArea(t.pid);
       if (page) return { ref: page };
     }

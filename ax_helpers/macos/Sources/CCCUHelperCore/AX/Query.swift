@@ -15,7 +15,7 @@ import Foundation
 ///   attr      := name | value | role | text            (text = name または子テキストの連結)
 ///   op        := "=" (完全一致、大小無視) | "*=" (含む) | "^=" (前方) | "$=" (後方)
 ///   pseudo    := enabled | disabled | focused | selected | checked | unchecked | expanded | collapsed
-///              | has(selector) | not(compound)
+///              | has(selector) | has(> selector) | has(+ selector) | has(~ selector) | not(compound)
 /// 評価はスナップショットの生ツリー (整形で畳まれる無名の group も含む) に対して行う。子セレクタ ">" は厳密な親子なので、
 /// 通常は子孫セレクタ (空白 / ">>") を使う
 public enum Query {
@@ -52,7 +52,7 @@ public enum Query {
     enum Op { case equals, contains, prefix, suffix }
     indirect enum Pseudo {
         case state(String, Bool)   // ("disabled", true) など。states 配列との照合
-        case has(Selector)
+        case has(Selector, Combinator?)   // :has(> X) のように先頭に結合子を置くと、その関係にある要素だけを見る
         case not(Compound)
     }
     struct Compound {
@@ -76,7 +76,16 @@ public enum Query {
             for p in pseudos {
                 switch p {
                 case .state(let s, let present): if n.states.contains(s) != present { return false }
-                case .has(let sel): if !Query.anyDescendant(of: n, matches: sel) { return false }
+                case .has(let sel, let rel):
+                    switch rel {
+                    case .none, .some(.descendant): if !Query.anyDescendant(of: n, matches: sel) { return false }
+                    case .some(.child): if !n.children.contains(where: { sel.matches($0) }) { return false }
+                    case .some(.next): guard let s = n.nextSibling, sel.matches(s) else { return false }
+                    case .some(.subsequent):
+                        var cur = n.nextSibling, hit = false
+                        while let s = cur { if sel.matches(s) { hit = true; break }; cur = s.nextSibling }
+                        if !hit { return false }
+                    }
                 case .not(let c): if c.matches(n) { return false }
                 }
             }
@@ -174,9 +183,12 @@ public enum Query {
                     case "unchecked": c.pseudos.append(.state("checked", false))
                     case "has":
                         guard take("(") else { throw HelperError.invalidParams("selector: '(' expected after :has") }
+                        skipSpace()
+                        var rel: Combinator? = nil
+                        if take(">>") { rel = .descendant } else if take(">") { rel = .child } else if take("+") { rel = .next } else if take("~") { rel = .subsequent }
                         let inner = try selector(); skipSpace()
                         guard take(")") else { throw HelperError.invalidParams("selector: ')' expected at \(i)") }
-                        c.pseudos.append(.has(inner))
+                        c.pseudos.append(.has(inner, rel))
                     case "not":
                         guard take("(") else { throw HelperError.invalidParams("selector: '(' expected after :not") }
                         skipSpace(); let inner = try compound(); skipSpace()

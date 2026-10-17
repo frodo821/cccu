@@ -7,7 +7,7 @@ export type Ref = { snapshot: string; ref: string };
 export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Modifier = "cmd" | "shift" | "alt" | "ctrl" | "fn";
-export type Scope = { pid: number } | { pid: number; windowNumber: number } | { ref: Ref };
+export type Scope = { pid: number } | { pid: number; windowNumber: number } | { pid: number; webarea: true } | { ref: Ref };
 export type FindQuery = { role?: string; title?: string; value?: string; exact?: boolean; enabled?: boolean };
 
 export type ErrorKind =

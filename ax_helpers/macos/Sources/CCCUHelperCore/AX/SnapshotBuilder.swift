@@ -32,6 +32,10 @@ final class Node {
     var rawTitle: String?     // 静的テキストの元の文字列 (前後の空白を保持)。隣の断片と結合するときの区切り判定用
     var ref: String?
     weak var parent: Node?    // 構造クエリ (Query) 用。walk で設定する
+    var nextSibling: Node? {
+        guard let p = parent, let idx = p.children.firstIndex(where: { $0 === self }), idx + 1 < p.children.count else { return nil }
+        return p.children[idx + 1]
+    }
     var previousSibling: Node? {
         guard let p = parent, let idx = p.children.firstIndex(where: { $0 === self }), idx > 0 else { return nil }
         return p.children[idx - 1]
