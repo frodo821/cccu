@@ -57,6 +57,14 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(UserActivity.mode, .block)
     }
 
+    func testDiagFormattingNeverTrapsOnNullRects() {
+        XCTAssertEqual(Diag.fmt(CGRect.null), "null")
+        XCTAssertEqual(Diag.fmt(CGRect.infinite), "null")
+        XCTAssertEqual(Diag.fmt(CGRect(x: 1.4, y: 2.6, width: 3, height: 4)), "1,3 3x4")
+        XCTAssertEqual(Diag.fmt(CGPoint(x: CGFloat.nan, y: CGFloat.infinity)), "nan,nan")
+        XCTAssertEqual(Diag.fmt("multi\nline"), "\"multi line\"")
+    }
+
     func testKeyCodes() {
         XCTAssertEqual(KeyCodes.code(for: "Enter"), 36)
         XCTAssertEqual(KeyCodes.code(for: "a"), 0)
@@ -186,5 +194,56 @@ final class ActivationTests: XCTestCase {
             XCTAssertEqual(e.kind, .notFound)
         } else { XCTFail() }
         XCTAssertTrue(d.capabilities.contains("app.launch"))
+    }
+}
+
+final class QueryTests: XCTestCase {
+    let el = AXElement.systemWide
+    func node(_ role: String, _ title: String? = nil, states: [String] = [], _ children: [Node] = []) -> Node {
+        let n = Node(element: el, role: role, title: title, value: nil, states: states, actionable: false)
+        n.children = children
+        children.forEach { $0.parent = n }
+        return n
+    }
+    func tree() -> Node {
+        node("webarea", "Lesson", [
+            node("heading", "Q1"),
+            node("group", nil, [node("text", "正解は"), node("text", " May I"), node("button", "確認", states: ["disabled"])]),
+            node("heading", "Q2"),
+            node("group", nil, [node("button", "Could you"), node("button", "確認")]),
+            node("link", "文法 レベル5 スタート"),
+        ])
+    }
+    func names(_ sel: String, _ root: Node) throws -> [String] {
+        let s = try Query.parse(sel)
+        var out: [String] = []
+        func walk(_ n: Node) { if s.matches(n) { out.append("\(n.role):\(n.title ?? "")") }; n.children.forEach(walk) }
+        walk(root)
+        return out
+    }
+    func testRoleAttributeAndPseudo() throws {
+        let t = tree()
+        XCTAssertEqual(try names("button", t).count, 3)
+        XCTAssertEqual(try names("button:enabled", t), ["button:Could you", "button:確認"])
+        XCTAssertEqual(try names("button[name=確認]:disabled", t), ["button:確認"])
+        XCTAssertEqual(try names("link[name$=スタート]", t), ["link:文法 レベル5 スタート"])
+        XCTAssertEqual(try names("[name^=\"Q\"]", t), ["heading:Q1", "heading:Q2"])
+        XCTAssertEqual(try names("\"正解は\"", t), ["group:", "text:正解は"], "文字列は名前か子テキストの連結に一致")
+    }
+    func testCombinators() throws {
+        let t = tree()
+        XCTAssertEqual(try names("group:has(\"正解は\") > button", t), ["button:確認"])
+        XCTAssertEqual(try names("group:has(\"正解は\") button:disabled", t), ["button:確認"])
+        XCTAssertEqual(try names("heading[name=Q2] + group button", t), ["button:Could you", "button:確認"])
+        XCTAssertEqual(try names("heading[name=Q1] ~ link", t), ["link:文法 レベル5 スタート"])
+        XCTAssertEqual(try names("webarea >> text", t).count, 2)
+        XCTAssertEqual(try names("group:not(:has(\"正解は\")) > button:not([name=確認])", t), ["button:Could you"])
+        XCTAssertEqual(try names("heading, link", t).count, 3)
+    }
+    func testParseErrors() {
+        XCTAssertThrowsError(try Query.parse("button["))
+        XCTAssertThrowsError(try Query.parse("button:nope"))
+        XCTAssertThrowsError(try Query.parse("\"unterminated"))
+        XCTAssertThrowsError(try Query.parse(""))
     }
 }

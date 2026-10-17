@@ -21,6 +21,18 @@ public func registerUIMethods(_ d: Dispatcher) {
         return snapshotResult(out)
     }
 
+    // CSS セレクタ風の構造クエリ。結果の形は ui.find と同じ
+    d.register("ui.query") { p in
+        try Trust.require()
+        let root = try p.scopeRoot()
+        waitForAXReady(root)
+        let sel = try Query.parse(try p.string("selector"))
+        var opts = p.snapshotOptions()
+        opts.maxNodes = p.optInt("maxNodes") ?? 5000
+        let out = SnapshotBuilder.build(root: root, options: opts, match: { sel.matches($0) })
+        return snapshotResult(out)
+    }
+
     d.register("ui.attributes") { p in
         let el = try p.ref()
         let names = (p.raw["names"] as? [String]) ?? el.attributeNames()
@@ -72,7 +84,7 @@ public func registerUIMethods(_ d: Dispatcher) {
             let frame1 = el.frame
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             let force = p.optBool("force") ?? false
-            var diag: [String: Any] = ["ref": refName, "role": el.role ?? "?", "name": el.title ?? el.descriptionText ?? "", "frame0": frame0 ?? CGRect.null, "frame1": frame1 ?? CGRect.null, "center": c]
+            var diag: [String: Any] = ["ref": refName, "role": el.role ?? "?", "name": el.title ?? el.descriptionText ?? "", "frame0": frame0 ?? "nil", "frame1": frame1 ?? "nil", "center": c]
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
                 // 前面に出した状態で、座標に実際にあるものを確認する。Chrome の AX の frame はスクロールやレイアウト変更より
@@ -102,17 +114,17 @@ public func registerUIMethods(_ d: Dispatcher) {
                 }
                 var pressed = c
                 let recheckLogged: (CGPoint) -> CGPoint? = { pt in let r = recheck(pt); if let r = r { pressed = r; diag["recheckMoved"] = true }; return r }
-                diag["hitTries"] = tries; diag["frame2"] = el.frame ?? CGRect.null
+                diag["hitTries"] = tries; diag["frame2"] = el.frame ?? "nil"
                 try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheckLogged)
                 // 押下後の状態: 要素 (またはその祖先) にフォーカスが移ったか、押下点に今あるもの、frame の変化。効かなかったクリックの手がかり
                 spin(0.05)
                 diag["pressed"] = pressed
-                diag["frame3"] = el.frame ?? CGRect.null
+                diag["frame3"] = el.frame ?? "nil"
                 diag["focusedAfter"] = el.isFocused || (el.element(kAXParentAttribute)?.isFocused ?? false)
                 diag["hitAfter"] = elementAt(pressed).map { "\($0.role ?? "?") \($0.title ?? "")" } ?? "nil"
             }
             Diag.log("click", diag)
-            return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject
+            return ["method": activationPolicy == .foreground || Session.isActive ? "cg" : "cg+restore"] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
         try UserActivity.guarded { try Input.click(at: pt, button: button, count: count, modifiers: mods, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode) }

@@ -102,6 +102,15 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
       inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, ...findShape, exact: z.boolean().optional(), textLimit: textLimitArg, maxNodes: z.number().int().optional().describe("Search budget in nodes (default 5000)") } },
     ({ target, within, scope, textLimit, maxNodes, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined, scope, textLimit, maxNodes }), true)));
 
+  server.registerTool("cu_query",
+    { description: 'Desktop: query the accessibility tree with a CSS-like selector and return the matches (with contents and ancestors), like cu_find but structural. Syntax: role or * or "text"; [name=…] [name*=…] [name^=…] [name$=…] [value…] [text…] (text = name or the concatenated child text); :enabled :disabled :focused :selected :checked :unchecked :expanded :collapsed :has(sel) :not(compound); combinators: space or >> (descendant), > (child), + (next sibling), ~ (later sibling); "," for alternatives. Examples: `button[name*=確認]:enabled`, `group:has("正解は") button`, `heading[name^=Q3] ~ group button`, `link[name$=スタート]`. Prefer descendant combinators: the raw tree has anonymous group wrappers.',
+      inputSchema: { target: targetArg, selector: z.string(), within: withinArg, scope: scopeArg, textLimit: textLimitArg, maxNodes: z.number().int().optional().describe("Search budget in nodes (default 5000)") } },
+    ({ target, selector, within, scope, textLimit, maxNodes }) => run(async () => {
+      const b = byTarget(target);
+      if (!b.query) throw new HelperError("UNSUPPORTED", "cu_query is only available for desktop targets");
+      return snap(await b.query(target, selector, { within: within ? parseRef(within) : undefined, scope, textLimit, maxNodes }), true);
+    }));
+
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
       inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000"), textLimit: textLimitArg } },

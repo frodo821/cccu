@@ -36,6 +36,7 @@ Tips
 - `enabled: true` on `cu_find` / `cu_wait` picks only enabled controls: the current question's 確認 button among many, or "wait until 次へ進む becomes enabled" (`cu_wait exists: {role: "button", text: "次へ進む", enabled: true}`).
 - Do not batch clicks from one snapshot when a click can scroll or change the page; re-find right before each click.
 - `cu_wait exists` with `count: N` waits until the N-th match appears (the N-th feedback block on a one-question-at-a-time page). `cu_find text=` also matches sentences that are split into several text nodes by formatting.
+- `cu_query` takes a CSS-like selector when role/text alone is not enough: `group:has("正解は") button` (buttons inside the feedback block), `heading[name^=Q3] ~ group button:enabled` (the enabled button after heading Q3), `link[name$=スタート]`, `button[name*=確認]:enabled`. Use descendant combinators (space); the raw tree has anonymous group wrappers.
 - `[offscreen]` on a control means it is outside the viewport; clicking it scrolls it into view first.
 - Roles are lower-case AX roles without the prefix: `button`, `textfield`, `textarea`, `checkbox`, `popupbutton`, `menuitem`, `sheet`, `window`.
 - `cu_type` with a ref focuses the element and inserts text at the caret through the accessibility API. `clear: true` replaces the content, `submit: true` presses Enter afterwards.

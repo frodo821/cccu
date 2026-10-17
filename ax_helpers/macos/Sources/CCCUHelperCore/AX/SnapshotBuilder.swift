@@ -31,6 +31,11 @@ final class Node {
     var matched = false       // ui.find 用
     var rawTitle: String?     // 静的テキストの元の文字列 (前後の空白を保持)。隣の断片と結合するときの区切り判定用
     var ref: String?
+    weak var parent: Node?    // 構造クエリ (Query) 用。walk で設定する
+    var previousSibling: Node? {
+        guard let p = parent, let idx = p.children.firstIndex(where: { $0 === self }), idx > 0 else { return nil }
+        return p.children[idx - 1]
+    }
     /// 子の葉テキストを連結した文字列 (装飾で分割された文に対する検索用)
     var blockText: String { children.filter { $0.role == "text" && $0.children.isEmpty }.compactMap { $0.title }.joined() }
 
@@ -76,7 +81,7 @@ public enum SnapshotBuilder {
 
             if depth < options.maxDepth && !leafRoles.contains(role) && !(options.skipWebContent && role == "webarea") {
                 for child in el.children {
-                    if let n = walk(child, depth: depth + 1) { node.children.append(n) }
+                    if let n = walk(child, depth: depth + 1) { n.parent = node; node.children.append(n) }
                     if count >= options.maxNodes { truncated = true; break }
                 }
             } else if depth >= options.maxDepth && !el.children.isEmpty {

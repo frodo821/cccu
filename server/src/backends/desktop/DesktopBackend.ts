@@ -24,12 +24,20 @@ export class DesktopBackend implements Backend {
 
   /** ヘルパーは最初の利用時に遅延起動する (権限ダイアログを不用意に出さないため) */
   async helper(): Promise<HelperClient> {
+    if (this.client && !this.client.running) {
+      // ヘルパーが落ちた (クラッシュ、kill) 後は新しいプロセスを起こす。古い ref は使えなくなる (STALE_REF)
+      try { await this.client.stop(); } catch { /* 既に終了 */ }
+      this.client = null;
+      this.restarted = true;
+    }
     if (!this.client) {
       this.client = this.factory ? this.factory() : new HelperClient({ onNotification: this.onNotification });
       await this.client.start();
+      if (this.restarted) process.stderr.write("[cccu] helper restarted after it exited; refs from before are no longer valid\n");
     }
     return this.client;
   }
+  private restarted = false;
 
   private async resolveTarget(target: string): Promise<ParsedTarget> {
     const t = parseTarget(target);
@@ -117,8 +125,13 @@ export class DesktopBackend implements Backend {
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within, opts.scope), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit, ...(await this.extraOptions(target, opts.scope)) });
   }
-  async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs, textLimit });
+  async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number, scope?: BrowserScope): Promise<SnapshotResult> {
+    return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within, scope), condition, timeoutMs, textLimit, ...(await this.extraOptions(target, scope)) });
+  }
+  async query(target: string, selector: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
+    const h = await this.helper();
+    if (!h.has("ui.query")) throw new HelperError("UNSUPPORTED", "helper does not support ui.query (rebuild ax_helpers/macos)");
+    return h.call("ui.query", { scope: await this.scope(target, opts.within, opts.scope), selector, maxNodes: opts.maxNodes, textLimit: opts.textLimit, ...(await this.extraOptions(target, opts.scope)) });
   }
   /** 操作結果の method 文字列に、ヘルパーの警告 (ユーザー入力の遮断・重なり、セッション終了) を添える */
   private static withWarning(method: string, r: { warning?: string }): string {
@@ -134,7 +147,7 @@ export class DesktopBackend implements Backend {
   }
   async inputSession(action: "begin" | "extend" | "end" | "status", target?: string, opts: { blockInput?: boolean; maxSeconds?: number } = {}): Promise<string> {
     const h = await this.helper();
-    if (!h.has("session.begin")) throw new HelperError("UNSUPPORTED", "helper does not support sessions (rebuild ax_helpers/macos)");
+    if (!h.has("session.begin")) throw new HelperError("UNSUPPORTED", h.running ? "helper does not support sessions (rebuild ax_helpers/macos)" : "helper is not running");
     switch (action) {
       case "begin": {
         if (!target) throw new HelperError("INVALID_PARAMS", "begin needs a target (app:<pid> or bundle id)");

@@ -63,6 +63,7 @@ export interface Methods {
     params: { scope: Scope; maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
+  "ui.query": { params: { scope: Scope; selector: string; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.attributes": { params: { ref: Ref; names?: string[] }; result: { attributes: Record<string, unknown> } };
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };

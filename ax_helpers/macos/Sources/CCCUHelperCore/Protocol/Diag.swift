@@ -24,8 +24,11 @@ public enum Diag {
     }
 
     static func fmt(_ v: Any) -> String {
-        if let r = v as? CGRect { return "\(Int(r.origin.x)),\(Int(r.origin.y)) \(Int(r.width))x\(Int(r.height))" }
-        if let p = v as? CGPoint { return "\(Int(p.x)),\(Int(p.y))" }
+        // 無限大や NaN (CGRect.null、frame 無し) を Int に変換するとクラッシュするので、数値は安全に丸める
+        func i(_ d: CGFloat) -> String { d.isFinite ? String(Int(d.rounded())) : "nan" }
+        if let r = v as? CGRect { return r.isNull || r.isInfinite ? "null" : "\(i(r.origin.x)),\(i(r.origin.y)) \(i(r.width))x\(i(r.height))" }
+        if let p = v as? CGPoint { return "\(i(p.x)),\(i(p.y))" }
+        if let d = v as? Double { return i(CGFloat(d)) }
         if let s = v as? String { return "\"" + s.replacingOccurrences(of: "\n", with: " ").prefix(40) + "\"" }
         return "\(v)"
     }

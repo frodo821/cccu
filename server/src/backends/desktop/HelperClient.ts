@@ -41,6 +41,9 @@ export class HelperClient {
     return this.hello;
   }
 
+  /** ヘルパープロセスが生きていて hello 済みか */
+  get running(): boolean { return this.proc !== null && this.hello !== null; }
+
   has(method: MethodName): boolean {
     return this.hello?.capabilities.includes(method) ?? false;
   }

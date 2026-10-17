@@ -48,7 +48,7 @@ public func registerInputMethods(_ d: Dispatcher) {
         }
         if let pid = pid, fg || (needsKeys && !direct) {
             try withForeground(pid, window: target?.window, work)
-            if activationPolicy != .foreground { method += "+restore" }
+            if activationPolicy != .foreground, !Session.isActive { method += "+restore" }
         } else {
             try work()
         }
@@ -80,7 +80,7 @@ public func registerInputMethods(_ d: Dispatcher) {
             // 3. 一瞬だけ前面化して実キーを送り、元のアプリへ戻す
         }
         try withForeground(pid) { try Input.pressKey(key, modifiers: mods) }
-        return ["method": activationPolicy == .foreground ? "hid" : "hid+restore"] as JSONObject
+        return ["method": activationPolicy == .foreground || Session.isActive ? "hid" : "hid+restore"] as JSONObject
     }
 
     d.register("input.scroll") { p in
@@ -97,7 +97,7 @@ public func registerInputMethods(_ d: Dispatcher) {
             }
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             try withForeground(el.pid, window: el.window) { Input.scroll(at: c, dx: dx, dy: dy, mode: pointer) }
-            result["method"] = activationPolicy == .foreground ? "hid" : "hid+restore"
+            result["method"] = activationPolicy == .foreground || Session.isActive ? "hid" : "hid+restore"
             return result
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }

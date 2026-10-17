@@ -86,6 +86,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | method | params | result |
 |--------|--------|--------|
 | `ui.snapshot` | `{scope: Scope, maxDepth?: int, maxNodes?: int, interestingOnly?: boolean, textLimit?: int}` | `{snapshot: string, text: string, refCount: int, truncated: boolean}` — `textLimit` は値・テキストの切り詰め長 (既定 80) |
+| `ui.query` | `{scope: Scope, selector: string, maxNodes?: int, textLimit?: int, skipWebContent?: bool}` | `ui.find` と同じ形 — CSS セレクタ風の構造クエリ。文法は `Query.swift` 冒頭 (role / `"文字列"` / `[name|value|role|text (=|*=|^=|$=) 値]` / `:enabled :disabled :focused :selected :checked :unchecked :expanded :collapsed :has(sel) :not(compound)` / 結合子 空白・`>>` 子孫, `>` 子, `+` 次の兄弟, `~` 後続の兄弟 / `,` 選択)。評価は整形前の生ツリーに対して行う (v1.11) |
 | `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int, textLimit?: int, skipWebContent?: bool}` | `{snapshot, text, refCount, matches}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ。`matches` は一致数 (祖先に付く ref は含まない) |
 | `ui.attributes` | `{ref: Ref, names?: string[]}` | `{attributes: {[AXName]: value}}` |
 | `ui.setAttribute` | `{ref: Ref, name: string, value: any}` | `{}` |
@@ -200,6 +201,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.11: `ui.query` (CSS セレクタ風の構造クエリ)
 - 1.10: 操作セッション `session.begin` / `session.extend` / `session.end` / `session.status` (対象アプリを前面に保ち、ユーザーの実入力を遮断。`maxSeconds` 必須、Escape 3 連打で終了)。ユーザー入力との競合対策 (`CCCU_USER_GUARD=block|wait|off`): 合成入力の間だけ実入力を遮断し、遮断・重なりがあれば結果に `warning`。`BUSY` エラー。合成イベントのソースを `.combinedSessionState` に
 - 1.9: `input.type` に `pid` (そのアプリのフォーカス要素へ入力)。可視判定をウィンドウではなく最寄りの webarea / scrollarea の表示範囲で行い、小さい要素は全体が入っていることを要求。`AXScrollToVisible` で端に寄っただけなら実スクロールで寄せ、1x1 の仮 frame のままなら frame のある祖先の中心を押す。文字サイズの違う断片は空白で区切る
 - 1.8: `ui.snapshot` / `ui.find` / `ui.waitFor` に `skipWebContent` (webarea の中身を省く)。静的テキスト断片の結合で元の文字列の空白を見て語の切れ目を判定。`textLimit` は本文 (text) にだけ適用し要素名は 80 未満に切らない
