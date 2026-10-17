@@ -12,6 +12,12 @@ public func registerInputMethods(_ d: Dispatcher) {
         if let el = try p.optRef() {
             try focus(el)
             target = el
+        } else if let pid = p.optInt("pid") {
+            // 指定アプリのフォーカス要素 (背面のアプリでも取れる)。アドレスバーに cmd+L した直後などに使う
+            guard let f = AXElement.application(pid: pid_t(pid)).element(kAXFocusedUIElementAttribute) else {
+                throw HelperError(.notFound, "app \(pid) has no focused element")
+            }
+            target = f
         } else {
             target = AXElement.systemWide.element(kAXFocusedUIElementAttribute)
         }

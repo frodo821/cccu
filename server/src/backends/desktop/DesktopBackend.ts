@@ -133,6 +133,21 @@ export class DesktopBackend implements Backend {
     const r = await h.call("input.key", { key, modifiers, pid, ...opts });
     return r.item ? `${r.method} "${r.item}"` : r.method;
   }
+  /** ユーザーの Chrome など AX で操作するブラウザで URL を開く: cmd+L でアドレスバーへ、フォーカス要素に URL を打って Enter */
+  async navigate(target: string | undefined, url: string): Promise<string> {
+    if (!target) throw new HelperError("INVALID_PARAMS", "desktop navigate needs a browser target (bundle id or app:<pid>)");
+    const h = await this.helper();
+    const t = await this.resolveTarget(target);
+    if (t.kind !== "app" || !(await this.isBrowser(t.pid))) throw new HelperError("UNSUPPORTED", `${target} is not a browser app`);
+    const shortcut = async (key: string) => (await h.call("input.key", { key, modifiers: ["cmd"], pid: t.pid })).method;
+    if (url === "back") return `back via ${await shortcut("[")}`;
+    if (url === "forward") return `forward via ${await shortcut("]")}`;
+    if (url === "close") return `closed tab via ${await shortcut("w")}`;
+    if (url === "new") return `new tab via ${await shortcut("t")}`;
+    const k = await shortcut("l");
+    const r = await h.call("input.type", { pid: t.pid, text: url, clear: true, submit: true });
+    return `opened ${url} via ${k}, ${r.method}`;
+  }
   async scroll(ref: Ref, dx: number, dy: number, opts: { foreground?: boolean; pointer?: "human" | "warp" } = {}): Promise<string> {
     const r = await (await this.helper()).call("input.scroll", { ref, dx, dy, ...opts });
     return r.anchor ? `${r.method} (element is off-screen; scrolled at its ${r.anchor})` : r.method;

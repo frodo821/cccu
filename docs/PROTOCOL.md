@@ -104,7 +104,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 | method | params | result |
 |--------|--------|--------|
-| `input.type` | `{ref?: Ref, text: string, clear?: boolean, submit?: boolean, method?: "auto"\|"keys"\|"ax"}` | `{method: string}` — ref 省略時はフォーカス中の要素。`auto` は AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順。`submit` 時の既定は `keys` (AX で挿入した文字列は Chrome のアドレスバーなどで「ユーザー入力」扱いにならず Enter が効かないため)。打鍵が落ちたら AX で入れ直す (v1.3) |
+| `input.type` | `{ref?: Ref, pid?: int, text: string, clear?: boolean, submit?: boolean, method?: "auto"\|"keys"\|"ax"}` | `{method: string}` — ref 省略時はフォーカス中の要素。`auto` は AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順。`submit` 時の既定は `keys` (AX で挿入した文字列は Chrome のアドレスバーなどで「ユーザー入力」扱いにならず Enter が効かないため)。打鍵が落ちたら AX で入れ直す (v1.3) |
 | `input.key` | `{key: string, modifiers?: Modifier[], pid?: int}` | `{}` — `key` は W3C `KeyboardEvent.key` 名。`pid` 指定時はそのアプリを前面にしてから送る |
 | `input.scroll` | `{ref?: Ref, point?: Point, dx: number, dy: number}` | `{}` |
 | `input.mouse` | `{point: Point, action: "move"\|"down"\|"up"\|"drag", to?: Point, button?: "left"\|"right"}` | `{}` |
@@ -185,6 +185,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.9: `input.type` に `pid` (そのアプリのフォーカス要素へ入力)。可視判定をウィンドウではなく最寄りの webarea / scrollarea の表示範囲で行い、小さい要素は全体が入っていることを要求。`AXScrollToVisible` で端に寄っただけなら実スクロールで寄せ、1x1 の仮 frame のままなら frame のある祖先の中心を押す。文字サイズの違う断片は空白で区切る
 - 1.8: `ui.snapshot` / `ui.find` / `ui.waitFor` に `skipWebContent` (webarea の中身を省く)。静的テキスト断片の結合で元の文字列の空白を見て語の切れ目を判定。`textLimit` は本文 (text) にだけ適用し要素名は 80 未満に切らない
 - 1.7: `ui.waitFor` のタイムアウトに `lastSnapshot` (最後に見えていたツリー、ref なし) と `matches` を添える。`input.scroll` は画面外の要素を基点にすると可視の祖先を使い `anchor` を返す。`truncatedBy`。ref 表を 200 に拡大。一致数を末端優先に。無名の静的テキストを省く。ヒットテストで対象の frame に収まる要素は対象の一部とみなす (ブラウザ UI の無名 group による `OBSTRUCTED` 誤検知の回避)。スクロール後の frame 安定判定を連続 2 回に
 - 1.6: 実クリック前のヒットテストと `OBSTRUCTED` エラー、`ui.click` の `force`

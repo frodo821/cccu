@@ -152,26 +152,52 @@ extension AXElement {
             if now.origin == f.origin && now.size == f.size { break }
             f = now
         }
-        let visible = window?.frame?.insetBy(dx: 2, dy: 2)
+        // 可視領域: ウィンドウと、最寄りのスクロール領域 (webarea / scrollarea) の共通部分。ウィンドウだけだと、ページ最下部に
+        // 半分だけ出ているボタンの中心が「見えている」と判定される
+        let visible = visibleRegion()
+        func center(_ r: CGRect) -> CGPoint { CGPoint(x: r.midX, y: r.midY) }
         // スクロールコンテナの表示範囲外にある要素は、Chrome が 1x1 の仮の frame で報告する。それも不可視として扱う
         func usable(_ r: CGRect) -> Bool {
-            r.width > 2 && r.height > 2 && (visible.map { $0.contains(CGPoint(x: r.midX, y: r.midY)) } ?? true)
+            guard r.width > 2, r.height > 2 else { return false }
+            guard let v = visible else { return true }
+            // 小さい要素 (ボタンなど) は全体が入っていること、大きい要素は中心が入っていればよい
+            return r.height <= 160 ? v.insetBy(dx: -1, dy: -1).contains(r) : v.contains(center(r))
         }
         if !usable(f), actionNames().contains("AXScrollToVisible") {
             try? perform("AXScrollToVisible")
-            // スムーズスクロールが終わるまで待つ (frame が実寸になり、位置が安定するまで)
-            // 連続する 2 回の読み取りで位置が変わらなくなるまで待つ (1 回だけだとスムーズスクロールの途中で止まることがある)
-            var last = f
-            var stable = 0
-            for _ in 0..<20 {
-                spin(0.08)
-                guard let now = frame else { break }
-                if usable(now), now.origin == last.origin { stable += 1; if stable >= 2 { f = now; break } }
-                else { stable = 0 }
-                last = now; f = now
+            f = settleFrame(from: f, usable: usable)
+        }
+        // AXScrollToVisible が端に寄せただけで一部が切れている (または効かなかった) 場合は、はみ出した分だけ実スクロールで寄せる
+        if !usable(f), f.width > 2, f.height > 2, let v = visible, let scroller = scrollAnchor()?.0 {
+            let dy = f.maxY > v.maxY ? Int(f.maxY - v.maxY) + 60 : (f.minY < v.minY ? -(Int(v.minY - f.minY) + 60) : 0)
+            if dy != 0 {
+                Input.scroll(at: scroller, dx: 0, dy: dy, mode: .warp)
+                f = settleFrame(from: f, usable: usable)
             }
         }
-        return CGPoint(x: f.midX, y: f.midY)
+        // それでも 1x1 のまま (非表示の input など、見えるラベルの裏に置かれた要素) なら、frame のある最寄りの祖先の中心を押す
+        if f.width <= 2 || f.height <= 2 {
+            var cur: AXElement? = element(kAXParentAttribute)
+            for _ in 0..<6 {
+                guard let c = cur, c.role != "AXWebArea", c.role != kAXWindowRole else { break }
+                if let cf = c.frame, cf.width > 2, cf.height > 2, cf.width * cf.height < 400 * 400 { return center(cf) }
+                cur = c.element(kAXParentAttribute)
+            }
+        }
+        return center(f)
+    }
+
+    /// 連続する 2 回の読み取りで位置が変わらなくなるまで待つ (1 回だけだとスムーズスクロールの途中で止まることがある)
+    private func settleFrame(from start: CGRect, usable: (CGRect) -> Bool) -> CGRect {
+        var f = start, last = start, stable = 0
+        for _ in 0..<20 {
+            spin(0.08)
+            guard let now = frame else { break }
+            if usable(now), now.origin == last.origin { stable += 1; if stable >= 2 { return now } }
+            else { stable = 0 }
+            last = now; f = now
+        }
+        return f
     }
 
     /// スクロールの基点として使える座標。要素自身が可視領域外 (1x1 の仮 frame やウィンドウ外) なら、frame が使える祖先 (スクロール領域など) の中心を使う。
@@ -188,6 +214,22 @@ extension AXElement {
             cur = c.element(kAXParentAttribute)
         }
         return center.map { ($0, nil) }
+    }
+
+    /// 最寄りのスクロール領域 (webarea / scrollarea) とウィンドウの共通部分
+    func visibleRegion() -> CGRect? {
+        var region = window?.frame?.insetBy(dx: 2, dy: 2)
+        var cur: AXElement? = element(kAXParentAttribute)
+        for _ in 0..<40 {
+            guard let c = cur else { break }
+            if c.role == kAXWindowRole { break }
+            if c.role == "AXWebArea" || c.role == kAXScrollAreaRole, let cf = c.frame, cf.width > 2, cf.height > 2 {
+                region = region.map { $0.intersection(cf) } ?? cf
+                if c.role == "AXWebArea" { break }   // webarea より外は見ない (タブ列など)
+            }
+            cur = c.element(kAXParentAttribute)
+        }
+        return region
     }
     var isMainWindow: Bool { bool(kAXMainAttribute) ?? false }
     var windowNumber: Int {

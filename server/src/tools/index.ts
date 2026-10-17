@@ -151,9 +151,13 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     ({ ref, action }) => run(async () => { const [b, r] = byRef(ref); await b.action(r, action); return text("ok"); }));
 
   server.registerTool("cu_navigate",
-    { description: "Browser only: open a URL in a tab (target omitted or \"new\" creates a tab; launches Chrome automatically if not connected), go \"back\" / \"forward\", or \"close\" the tab.",
-      inputSchema: { target: z.string().optional().describe('"tab:<id>" or "new"'), url: z.string().describe('URL, or "back" / "forward" / "close"') } },
-    ({ target, url }) => run(async () => text(await ctx.browser.navigate(target, url))));
+    { description: "Open a URL, go \"back\" / \"forward\", or \"close\" the tab. CDP Chrome: target \"tab:<id>\" (omitted or \"new\" creates a tab; launches Chrome if not connected). The user's own Chrome: target its bundle id (com.google.Chrome) or app:<pid>; the URL goes through the address bar of the current tab (url \"new\" opens a tab first).",
+      inputSchema: { target: z.string().optional().describe('"tab:<id>", "new", or a desktop browser target (com.google.Chrome / app:<pid>)'), url: z.string().describe('URL, or "back" / "forward" / "close" / "new"') } },
+    ({ target, url }) => run(async () => {
+      const b = target && !ctx.browser.ownsTarget(target) && target !== "new" ? byTarget(target) : ctx.browser;
+      if (!b.navigate) throw new HelperError("UNSUPPORTED", `cannot navigate ${target}`);
+      return text(await b.navigate(target, url));
+    }));
 
   server.registerTool("cu_screenshot",
     { description: "Screenshot of a target (window, app's main window, or tab) as an image. Supplementary: prefer cu_snapshot for reading UI; use this to check visual state. Desktop capture needs Screen Recording permission.",

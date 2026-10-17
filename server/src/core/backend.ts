@@ -24,6 +24,8 @@ export interface Backend {
   ownsSnapshot(snapshotId: string): boolean;
 
   listTargets(): Promise<TargetInfo[]>;
+  /** URL を開く / back / forward / close。desktop ではブラウザアプリのアドレスバー経由 */
+  navigate?(target: string | undefined, url: string): Promise<string>;
   activate(target: string): Promise<string>;
   snapshot(target: string, opts?: SnapshotOptions): Promise<SnapshotResult>;
   find(target: string, query: FindQuery, opts?: SnapshotOptions): Promise<SnapshotResult>;

@@ -234,7 +234,9 @@ public enum SnapshotBuilder {
                 // 元の文字列のどちらかが空白で接していれば語の切れ目。そうでなくても横に隙間があれば別の語 (インライン装飾で分割された "may" + "disagree")
                 let gap = f.minX - lf.maxX
                 let touchesSpace = (last.rawTitle ?? lt).last.map { $0.isWhitespace } ?? false || (c.rawTitle ?? ct).first.map { $0.isWhitespace } ?? false
-                let sep = (touchesSpace || gap > 2) ? " " : ""
+                // 高さ (文字サイズ) が明らかに違う断片は別の要素 (見出しと副題など) なので空白で区切る
+                let sizeDiffers = abs(f.height - lf.height) > max(f.height, lf.height) * 0.2
+                let sep = (touchesSpace || sizeDiffers || gap > 2) ? " " : ""
                 let merged = Node(element: last.element, role: "text", title: lt + sep + ct, value: nil, states: [], actionable: false)
                 merged.rawTitle = (last.rawTitle ?? lt) + sep + (c.rawTitle ?? ct)
                 out[out.count - 1] = merged

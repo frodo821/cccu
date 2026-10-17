@@ -75,7 +75,7 @@ export interface Methods {
     params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };
+  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };
   "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string } };
   "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean; pointer?: "human" | "warp" }; result: { method: string; anchor?: string } };
   "input.mouse": {
