@@ -250,3 +250,14 @@ final class QueryTests: XCTestCase {
         XCTAssertThrowsError(try Query.parse(""))
     }
 }
+
+final class ChangeReportTests: XCTestCase {
+    func testDiffIgnoresRefNumbersAndKeepsOrder() {
+        let before = "- webarea \"L\" [ref=e1]\n  - heading \"Q1\"\n  - button \"確認\" [ref=e2] [disabled]\n  - button \"A\" [ref=e3]"
+        let after = "- webarea \"L\" [ref=e1]\n  - heading \"Q1\"\n  - text \"正解は A\"\n  - button \"確認\" [ref=e4] [disabled]\n  - button \"A\" [ref=e5] [focused]\n  - button \"次へ進む\" [ref=e6]"
+        let (added, removed) = ChangeReport.diff(before: before, after: after)
+        XCTAssertEqual(added, ["  - text \"正解は A\"", "  - button \"A\" [ref=e5] [focused]", "  - button \"次へ進む\" [ref=e6]"])
+        XCTAssertEqual(removed, ["  - button \"A\" [ref=e3]"])
+        XCTAssertEqual(ChangeReport.stripRefs("- button \"x\" [ref=e12] [disabled]"), "- button \"x\" [disabled]")
+    }
+}

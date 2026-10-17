@@ -4,6 +4,18 @@ import Foundation
 public func registerInputMethods(_ d: Dispatcher) {
     d.register("input.type") { p in
         try Trust.require()
+        let anchor = try p.optRef()
+        let pid: pid_t? = anchor?.pid ?? p.optInt("pid").map { pid_t($0) }
+        return try ChangeReport.wrap(p, anchor: anchor, pid: pid) { try typeBody(p) }
+    }
+    d.register("input.key") { p in
+        try Trust.require()
+        return try ChangeReport.wrap(p, anchor: nil, pid: p.optInt("pid").map { pid_t($0) }) { try keyBody(p) }
+    }
+}
+
+private func typeBody(_ p: Params) throws -> JSONObject {
+    do {
         let text = try p.string("text")
         let clear = p.optBool("clear") ?? false
         let submit = p.optBool("submit") ?? false
@@ -55,8 +67,10 @@ public func registerInputMethods(_ d: Dispatcher) {
         return ["method": method] as JSONObject
     }
 
-    d.register("input.key") { p in
-        try Trust.require()
+}
+
+private func keyBody(_ p: Params) throws -> JSONObject {
+    do {
         let key = try p.string("key")
         let mods = p.modifiers()
         let foreground = wantsForeground(p.optBool("foreground") ?? false)
@@ -83,6 +97,9 @@ public func registerInputMethods(_ d: Dispatcher) {
         return ["method": activationPolicy == .foreground || Session.isActive ? "hid" : "hid+restore"] as JSONObject
     }
 
+}
+
+public func registerScrollMethods(_ d: Dispatcher) {
     d.register("input.scroll") { p in
         try Trust.require()
         let dx = try p.int("dx"), dy = try p.int("dy")

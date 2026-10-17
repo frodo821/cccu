@@ -153,6 +153,12 @@ things keep that from happening:
 - Outside a session, each real click or key press blocks your input only for that instant (`CCCU_USER_GUARD=block`,
   the default). `CCCU_USER_GUARD=wait` waits for your input to pause instead of blocking it, and `off` disables both.
 
+## What changed?
+
+Every desktop action tells you what it did to the page: the lines that appeared or disappeared (with refs you can act
+on), the whole new tree when a lot changed, or that nothing visible changed. One call per step instead of act, find,
+check. Pass `report: "none"` to skip it when batching.
+
 ## Pointer motion
 
 Real mouse actions move the cursor like a hand would instead of teleporting it: the travel time follows Fitts's law,

@@ -1,5 +1,5 @@
-import type { Backend, BrowserScope, SnapshotOptions, TargetInfo, UIEvent, WaitCondition } from "../../core/backend.js";
-import { HelperError, type AXEvent, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
+import type { ActionReportOptions, Backend, BrowserScope, SnapshotOptions, TargetInfo, UIEvent, WaitCondition } from "../../core/backend.js";
+import { HelperError, type AXEvent, type Changes, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
 import { parseTarget, scopeOf, type ParsedTarget } from "../../core/targets.js";
 import { HelperClient } from "./HelperClient.js";
 
@@ -137,14 +137,23 @@ export class DesktopBackend implements Backend {
     return h.call("ui.query", { scope: await this.scope(target, opts.within, opts.scope), selector, maxNodes: opts.maxNodes, textLimit: opts.textLimit, ...(await this.extraOptions(target, opts.scope)) });
   }
   /** 操作結果の method 文字列に、ヘルパーの警告 (ユーザー入力の遮断・重なり、セッション終了) を添える */
-  private static withWarning(method: string, r: { warning?: string }): string {
-    return r.warning ? `${method} — WARNING: ${r.warning}` : method;
+  private static withWarning(method: string, r: { warning?: string; changes?: Changes }): string {
+    let out = r.warning ? `${method} — WARNING: ${r.warning}` : method;
+    if (r.changes) out += "\n" + DesktopBackend.formatChanges(r.changes);
+    return out;
   }
-  async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean }): Promise<string> {
+  /** 操作後の変化を読みやすく: 変化なし / 追加・削除行 / 大きな変化は全体 */
+  private static formatChanges(c: Changes): string {
+    if (!c.changed) return `no visible change within ${1.2}s (snapshot=${c.snapshot})`;
+    if (c.full !== undefined) return `changed a lot (+${c.added} -${c.removed} lines); new tree (snapshot=${c.snapshot} refs=${c.refCount}):\n${c.full}`;
+    const lines = [...(c.addedLines ?? []).map((l) => "+ " + l.trimStart()), ...(c.removedLines ?? []).map((l) => "- " + l.trimStart())];
+    return `changes (snapshot=${c.snapshot} refs=${c.refCount}): +${c.added} -${c.removed}\n${lines.join("\n")}`;
+  }
+  async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean } & ActionReportOptions): Promise<string> {
     const r = await (await this.helper()).call("ui.click", { ref, ...opts });
     return DesktopBackend.withWarning(r.method, r);
   }
-  async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string> {
+  async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean } & ActionReportOptions): Promise<string> {
     const r = await (await this.helper()).call("input.type", { ref, text, ...opts });
     return DesktopBackend.withWarning(r.method, r);
   }
@@ -175,7 +184,7 @@ export class DesktopBackend implements Backend {
       }
     }
   }
-  async key(target: string | undefined, key: string, modifiers?: Modifier[], opts: { foreground?: boolean } = {}): Promise<string> {
+  async key(target: string | undefined, key: string, modifiers?: Modifier[], opts: { foreground?: boolean } & ActionReportOptions = {}): Promise<string> {
     const h = await this.helper();
     // scope() はブラウザだと webarea の ref を返し pid を持たないので、ターゲット解決から直接 pid を取る
     const pid = target ? (await this.resolveTarget(target) as { pid?: number }).pid : undefined;
@@ -201,15 +210,17 @@ export class DesktopBackend implements Backend {
     const r = await (await this.helper()).call("input.scroll", { ref, dx, dy, ...opts });
     return DesktopBackend.withWarning(r.anchor ? `${r.method} (element is off-screen; scrolled at its ${r.anchor})` : r.method, r);
   }
-  async setValue(ref: Ref, value: string | number | boolean): Promise<void> {
-    await (await this.helper()).call("ui.setAttribute", { ref, name: "AXValue", value });
+  async setValue(ref: Ref, value: string | number | boolean, opts: ActionReportOptions = {}): Promise<string> {
+    const r = await (await this.helper()).call("ui.setAttribute", { ref, name: "AXValue", value, ...opts });
+    return DesktopBackend.withWarning("ok", r);
   }
   async focus(ref: Ref): Promise<void> { await (await this.helper()).call("ui.focus", { ref }); }
   async attributes(ref: Ref, names?: string[]): Promise<Record<string, unknown>> {
     return (await (await this.helper()).call("ui.attributes", { ref, names })).attributes;
   }
-  async action(ref: Ref, action: string): Promise<void> {
-    await (await this.helper()).call("ui.performAction", { ref, action });
+  async action(ref: Ref, action: string, opts: ActionReportOptions = {}): Promise<string> {
+    const r = await (await this.helper()).call("ui.performAction", { ref, action, ...opts });
+    return DesktopBackend.withWarning("ok", r);
   }
   async screenshot(target: string, opts: { maxWidth?: number } = {}) {
     return this.withPermissionRetry(async () => {

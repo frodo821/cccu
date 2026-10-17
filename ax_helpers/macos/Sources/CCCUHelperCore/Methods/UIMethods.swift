@@ -44,20 +44,6 @@ public func registerUIMethods(_ d: Dispatcher) {
         return ["attributes": attrs] as JSONObject
     }
 
-    d.register("ui.setAttribute") { p in
-        let el = try p.ref()
-        let name = try p.string("name")
-        guard let value = p.raw["value"] else { throw HelperError.invalidParams("value required") }
-        try el.set(name, try AXJSON.toCF(value))
-        return [:] as JSONObject
-    }
-
-    d.register("ui.performAction") { p in
-        let el = try p.ref()
-        try el.perform(try p.string("action"))
-        return [:] as JSONObject
-    }
-
     d.register("ui.focus") { p in
         let el = try p.ref()
         try focus(el)
@@ -66,6 +52,25 @@ public func registerUIMethods(_ d: Dispatcher) {
 
     d.register("ui.click") { p in
         try Trust.require()
+        let anchor = try p.optRef()
+        return try ChangeReport.wrap(p, anchor: anchor, pid: anchor?.pid) { try clickBody(p) }
+    }
+
+    d.register("ui.setAttribute") { p in
+        let el = try p.ref()
+        let name = try p.string("name")
+        guard let value = p.raw["value"] else { throw HelperError.invalidParams("value required") }
+        return try ChangeReport.wrap(p, anchor: el, pid: el.pid) { try el.set(name, try AXJSON.toCF(value)); return [:] as JSONObject }
+    }
+
+    d.register("ui.performAction") { p in
+        let el = try p.ref()
+        return try ChangeReport.wrap(p, anchor: el, pid: el.pid) { try el.perform(try p.string("action")); return [:] as JSONObject }
+    }
+}
+
+/// ui.click の本体 (ChangeReport.wrap から呼ぶ)
+private func clickBody(_ p: Params) throws -> JSONObject {
         let button = p.optString("button")
         let count = p.optInt("count") ?? 1
         let mods = p.modifiers()
@@ -148,7 +153,10 @@ public func registerUIMethods(_ d: Dispatcher) {
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
         try UserActivity.guarded { try Input.click(at: pt, button: button, count: count, modifiers: mods, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode) }
         return ["method": "cg"] as JSONObject
-    }
+}
+
+/// 待機系 (ui.waitFor)
+public func registerUIWaitMethods(_ d: Dispatcher) {
 
     d.register("ui.waitFor") { p in
         try Trust.require()

@@ -201,6 +201,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.13: 操作後の変化の報告。`ui.click` / `ui.setAttribute` / `ui.performAction` / `input.type` / `input.key` が `report: "none"|"diff"|"full"` (既定 none) と `textLimit` を受け取り、結果に `changes: {snapshot, refCount, changed, added?, removed?, addedLines?, removedLines?, full?}` を添える。対象は要素の webarea (無ければウィンドウ、ref が無ければアプリの最前面 webarea)。操作後、変化が現れて安定するまで最大 1.2 秒待つ。差分が 60 行超または 4 割超なら `full` に新しいツリー全体
 - 1.12: `Scope` に `{pid, webarea: true}` (最前面ウィンドウの最も外側の AXWebArea。読み込み直後は最大 1 秒待つ)。`ui.click` は押下後に frame が動いていて、押下点が frame の 3px 内側に入っていないか押下点のヒットテストが対象と無関係なら、新しい中心で 1 回だけ押し直し、`method` に明記。`AXScrollToVisible` 後に最低 0.3 秒待つ。`ui.query` の `:has()` に相対結合子 (`:has(> X)` など)
 - 1.11: `ui.query` (CSS セレクタ風の構造クエリ)
 - 1.10: 操作セッション `session.begin` / `session.extend` / `session.end` / `session.status` (対象アプリを前面に保ち、ユーザーの実入力を遮断。`maxSeconds` 必須、Escape 3 連打で終了)。ユーザー入力との競合対策 (`CCCU_USER_GUARD=block|wait|off`): 合成入力の間だけ実入力を遮断し、遮断・重なりがあれば結果に `warning`。`BUSY` エラー。合成イベントのソースを `.combinedSessionState` に

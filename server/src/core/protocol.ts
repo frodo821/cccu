@@ -7,6 +7,7 @@ export type Ref = { snapshot: string; ref: string };
 export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Modifier = "cmd" | "shift" | "alt" | "ctrl" | "fn";
+export type ReportMode = "none" | "diff" | "full";
 export type Scope = { pid: number } | { pid: number; windowNumber: number } | { pid: number; webarea: true } | { ref: Ref };
 export type FindQuery = { role?: string; title?: string; value?: string; exact?: boolean; enabled?: boolean };
 
@@ -25,6 +26,8 @@ export class HelperError extends Error {
   }
 }
 
+/** 操作後の変化 (report: diff|full) */
+export interface Changes { snapshot: string; refCount: number; changed: boolean; added?: number; removed?: number; addedLines?: string[]; removedLines?: string[]; full?: string }
 export interface SessionStatus { active: boolean; pid?: number; blocking?: boolean; remainingSeconds?: number }
 export interface HelloResult {
   protocolVersion: string;
@@ -66,19 +69,19 @@ export interface Methods {
   "ui.query": { params: { scope: Scope; selector: string; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.attributes": { params: { ref: Ref; names?: string[] }; result: { attributes: Record<string, unknown> } };
-  "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
-  "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
+  "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown; report?: ReportMode; textLimit?: number }; result: { changes?: Changes; warning?: string } };
+  "ui.performAction": { params: { ref: Ref; action: string; report?: ReportMode; textLimit?: number }; result: { changes?: Changes; warning?: string } };
   "ui.click": {
-    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean };
-    result: { method: string; warning?: string };
+    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean; report?: ReportMode; textLimit?: number };
+    result: { method: string; warning?: string; changes?: Changes };
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
   "ui.waitFor": {
     params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string; warning?: string } };
-  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string; warning?: string } };
+  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean; report?: ReportMode; textLimit?: number }; result: { method: string; warning?: string; changes?: Changes } };
+  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean; report?: ReportMode; textLimit?: number }; result: { method: string; item?: string; warning?: string; changes?: Changes } };
   "session.begin": { params: { pid?: number; bundleId?: string; blockInput?: boolean; maxSeconds: number }; result: { pid: number; previousPid?: number; blocking: boolean; maxSeconds: number; warning?: string } };
   "session.extend": { params: { maxSeconds: number }; result: SessionStatus };
   "session.end": { params: Record<string, never>; result: { active: false; blockedInputs?: number; seconds?: number; warning?: string } };

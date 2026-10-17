@@ -14,6 +14,8 @@ export interface TargetInfo {
 }
 
 export type BrowserScope = "page" | "app";
+/** desktop: 操作後の変化の報告 (none | diff | full) と、その行の文字数上限 */
+export interface ActionReportOptions { report?: "none" | "diff" | "full"; textLimit?: number }
 export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; within?: Ref; textLimit?: number; scope?: BrowserScope }
 export type WaitCondition = { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number };
 
@@ -36,14 +38,14 @@ export interface Backend {
   waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number, scope?: BrowserScope): Promise<SnapshotResult>;
 
   /** foreground: 効かなかった操作を「一瞬前面化して実行し、元のアプリへ戻す」でやり直すための指定 (desktop のみ意味を持つ) */
-  click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean }): Promise<string>;
-  type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string>;
-  key(target: string | undefined, key: string, modifiers?: Modifier[], opts?: { foreground?: boolean }): Promise<string>;
+  click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean } & ActionReportOptions): Promise<string>;
+  type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean } & ActionReportOptions): Promise<string>;
+  key(target: string | undefined, key: string, modifiers?: Modifier[], opts?: { foreground?: boolean } & ActionReportOptions): Promise<string>;
   scroll(ref: Ref, dx: number, dy: number, opts?: { foreground?: boolean; pointer?: "human" | "warp" }): Promise<string>;
-  setValue(ref: Ref, value: string | number | boolean): Promise<void>;
+  setValue(ref: Ref, value: string | number | boolean, opts?: ActionReportOptions): Promise<string | void>;
   focus(ref: Ref): Promise<void>;
   attributes(ref: Ref, names?: string[]): Promise<Record<string, unknown>>;
-  action(ref: Ref, action: string): Promise<void>;
+  action(ref: Ref, action: string, opts?: ActionReportOptions): Promise<string | void>;
   /** PNG スクリーンショット (補助情報)。desktop は Screen Recording 権限が要る */
   screenshot(target: string, opts?: { maxWidth?: number }): Promise<{ pngBase64: string; width?: number; height?: number; frame?: { x: number; y: number; w: number; h: number }; scale?: number }>;
 
