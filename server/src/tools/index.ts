@@ -18,7 +18,7 @@ const fail = (e: unknown): ToolResult => {
     // タイムアウト時にヘルパーが添える最後のスナップショットは、JSON ではなくそのまま読める形で出す
     const { lastSnapshot, ...rest } = e.data as { lastSnapshot?: string };
     msg = `${e.kind}: ${e.message}${Object.keys(rest).length ? "\n" + JSON.stringify(rest) : ""}`;
-    if (typeof lastSnapshot === "string") msg += `\nlast snapshot (no refs):\n${lastSnapshot}`;
+    if (typeof lastSnapshot === "string") msg += `\nlast snapshot (no refs):\n${lastSnapshot.replace(/ \[ref=e\d+\]/g, "")}`;
   }
   return { content: [{ type: "text", text: msg }], isError: true };
 };
@@ -29,7 +29,8 @@ const snap = (r: SnapshotResult, isFind = false): ToolResult => {
       : isFind ? " (search stopped at the maxNodes budget before covering the whole tree: raise maxNodes or narrow the scope with within)"
       : " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)";
   }
-  return text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${note}\n${r.text}`);
+  const body = r.text.trim() === "" && isFind ? "(no matches)" : r.text;
+  return text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${note}\n${body}`);
 };
 
 const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optional();

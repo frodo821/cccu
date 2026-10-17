@@ -273,7 +273,7 @@ public enum SnapshotBuilder {
 
     static func render(_ node: Node, indent: Int, lines: inout [String], refs: inout [String: AXElement], counter: inout Int, options: SnapshotOptions) {
         var line = String(repeating: "  ", count: indent) + "- " + node.role
-        if let t = node.title { line += " " + quote(t, limit: node.role == "text" ? options.valueLimit : max(options.valueLimit, 80)) }   // textLimit は本文用。要素名は 80 未満に切らない
+        if let t = node.title { line += " " + quote(t, limit: node.role == "text" ? options.valueLimit : max(options.valueLimit, 120)) }   // textLimit は本文用。要素名 (リンク名など) は 120 未満に切らない
         if node.actionable || node.matched {
             counter += 1
             let ref = "e\(counter)"

@@ -66,15 +66,20 @@ public func registerUIMethods(_ d: Dispatcher) {
                 try act(el.pid, window: el.window, foreground: fg) { try el.perform(kAXPressAction) }
                 return ["method": fg ? "ax+foreground" : "ax"] as JSONObject
             }
+            let refName = (try? p.object("ref")).map { "\((try? $0.string("snapshot")) ?? "?")/\((try? $0.string("ref")) ?? "?")" } ?? "?"
+            let frame0 = el.frame
             guard var c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
+            let frame1 = el.frame
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             let force = p.optBool("force") ?? false
+            var diag: [String: Any] = ["ref": refName, "role": el.role ?? "?", "name": el.title ?? el.descriptionText ?? "", "frame0": frame0 ?? CGRect.null, "frame1": frame1 ?? CGRect.null, "center": c]
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
                 // 前面に出した状態で、座標に実際にあるものを確認する。Chrome の AX の frame はスクロールやレイアウト変更より
                 // 遅れて更新されるので、対象が見つかるまで frame を読み直して再試行する。それでも別の要素なら (モーダルのスクリムなど) 知らせる
                 var hit = elementAt(c)
                 var tries = 0
+                diag["hit0"] = hit.map { "\($0.role ?? "?") \($0.title ?? "")" } ?? "nil"
                 while !force, let h = hit, !h.isRelated(to: el), tries < 12 {
                     tries += 1
                     spin(0.08)
@@ -95,8 +100,18 @@ public func registerUIMethods(_ d: Dispatcher) {
                     let c2 = CGPoint(x: f.midX, y: f.midY)
                     return hypot(c2.x - pt.x, c2.y - pt.y) > 2 ? c2 : nil
                 }
-                try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheck)
+                var pressed = c
+                let recheckLogged: (CGPoint) -> CGPoint? = { pt in let r = recheck(pt); if let r = r { pressed = r; diag["recheckMoved"] = true }; return r }
+                diag["hitTries"] = tries; diag["frame2"] = el.frame ?? CGRect.null
+                try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheckLogged)
+                // 押下後の状態: 要素 (またはその祖先) にフォーカスが移ったか、押下点に今あるもの、frame の変化。効かなかったクリックの手がかり
+                spin(0.05)
+                diag["pressed"] = pressed
+                diag["frame3"] = el.frame ?? CGRect.null
+                diag["focusedAfter"] = el.isFocused || (el.element(kAXParentAttribute)?.isFocused ?? false)
+                diag["hitAfter"] = elementAt(pressed).map { "\($0.role ?? "?") \($0.title ?? "")" } ?? "nil"
             }
+            Diag.log("click", diag)
             return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
