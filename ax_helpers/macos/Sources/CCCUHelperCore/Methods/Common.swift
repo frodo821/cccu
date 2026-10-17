@@ -141,6 +141,13 @@ extension AXElement {
     /// 戻り値はスクロール後の中心座標
     func ensureVisibleCenter() -> CGPoint? {
         guard var f = frame else { return nil }
+        // Chrome の AX の frame はレイアウト変更 (フィードバックの挿入、スクロール) より遅れて更新される。短く待って読み直し、動いていなければ使う
+        for _ in 0..<6 {
+            spin(0.05)
+            guard let now = frame else { break }
+            if now.origin == f.origin && now.size == f.size { break }
+            f = now
+        }
         let visible = window?.frame?.insetBy(dx: 2, dy: 2)
         // スクロールコンテナの表示範囲外にある要素は、Chrome が 1x1 の仮の frame で報告する。それも不可視として扱う
         func usable(_ r: CGRect) -> Bool {
@@ -224,12 +231,14 @@ extension Params {
         let title = q.optString("title")
         let value = q.optString("value")
         let exact = q.optBool("exact") ?? false
-        if role == nil && title == nil && value == nil { throw HelperError.invalidParams("query needs role, title or value") }
+        let enabled = q.optBool("enabled")
+        if role == nil && title == nil && value == nil && enabled == nil { throw HelperError.invalidParams("query needs role, title, value or enabled") }
         func matches(_ s: String?, _ q: String) -> Bool {
             guard let s = s else { return false }
             return exact ? s == q : s.localizedCaseInsensitiveContains(q)
         }
         return { n in
+            if let e = enabled, n.states.contains("disabled") == e { return false }
             if let r = role, n.role != r { return false }
             if let t = title, !matches(n.title, t) { return false }
             if let v = value {

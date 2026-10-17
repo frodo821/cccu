@@ -24,7 +24,7 @@ const snap = (r: SnapshotResult): ToolResult =>
 const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optional();
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
 const targetArg = z.string().describe('"app:<pid>", "window:<pid>:<n>", a bundle id like com.apple.TextEdit, or "tab:<id>" for a Chrome tab');
-const findShape = { role: z.string().optional(), text: z.string().optional(), value: z.string().optional() };
+const findShape = { role: z.string().optional(), text: z.string().optional(), value: z.string().optional(), enabled: z.boolean().optional().describe("Only enabled (true) or only disabled (false) elements") };
 const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
 const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
 const pointerArg = z.enum(["human", "warp"]).optional().describe("Desktop: how the cursor travels for a real click/scroll. Default human (Fitts's-law motion); warp jumps instantly");
@@ -44,8 +44,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     return [b, ref];
   };
   const run = (fn: () => Promise<ToolResult>) => fn().catch(fail);
-  const toQuery = (o: { role?: string; text?: string; value?: string; exact?: boolean }): FindQuery =>
-    ({ role: o.role, title: o.text, value: o.value, exact: o.exact });
+  const toQuery = (o: { role?: string; text?: string; value?: string; exact?: boolean; enabled?: boolean }): FindQuery =>
+    ({ role: o.role, title: o.text, value: o.value, exact: o.exact, enabled: o.enabled });
   const fmtTarget = (t: TargetInfo) =>
     `${t.kind === "window" ? "  " : ""}${t.id}\t"${t.title}"${t.bundleId ? ` (${t.bundleId})` : ""}${t.url ? `\t${t.url}` : ""}${t.focused ? "\t[focused]" : ""}${(t.extra ?? []).map((e) => `\t[${e}]`).join("")}`;
 

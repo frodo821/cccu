@@ -38,9 +38,9 @@ Point     = { "x": 100.0, "y": 200.0 }           // スクリーン座標、左�
 Rect      = { "x": 0, "y": 0, "w": 800, "h": 600 }
 Modifier  = "cmd" | "shift" | "alt" | "ctrl" | "fn"
 Scope     = { "pid": 123 } | { "pid": 123, "windowNumber": 45 } | { "ref": Ref }
-FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boolean }
+FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boolean, "enabled"?: boolean }
            // role は AX ロール名から "AX" を除いた小文字 ("button", "textfield" …)
-           // title/value は部分一致 (exact=true で完全一致)。複数条件は AND
+           // title/value は部分一致 (exact=true で完全一致)。複数条件は AND。enabled は有効 (true) / 無効 (false) の絞り込み (v1.6)
 ```
 
 ## 4. エラー
@@ -159,7 +159,8 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 - 1 行 1 ノード、インデント 2 スペース、`- role "title"` の順。title がなければ省略
 - ref は操作可能または識別に有用なノードにのみ付与。`e1` から連番
-- 名前も値も無い操作要素には `[at x,y wxh]` (画面座標) を添える。スクリーンショットと照合して役割を判断するため
+- 名前も値も無い操作要素には `[at x,y wxh]` (画面座標) を添える。スクリーンショットと照合して役割を判断するため。可視領域外で仮の frame (幅または高さ 0) しか無いものは `[offscreen]`
+- `ui.find` の結果には、一致要素の直前の見出し (同じ親の中) を文脈として残す (設問番号など)
 - 同じ行にある静的テキストの断片 (インライン装飾で分割されたもの) は 1 つに結合する。横に隙間があれば空白を挟む
 - 名前の不可視文字 (ゼロ幅スペース、BOM、私用領域のアイコン文字など) は除去し、空になれば無名として扱う
 - 状態フラグ: `[focused] [disabled] [selected] [checked] [expanded] [collapsed]`

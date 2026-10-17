@@ -119,6 +119,7 @@ export function matcher(q: FindQuery): (n: AXNode) => boolean {
   const cmp = (s: string | undefined, needle: string) =>
     s !== undefined && (q.exact ? s === needle : s.toLowerCase().includes(needle.toLowerCase()));
   return (n) => {
+    if (q.enabled !== undefined && n.states.includes("disabled") === q.enabled) return false;
     if (role && n.role !== role && !n.role.startsWith(role + "[")) return false;
     if (q.title !== undefined && !cmp(n.title, q.title)) return false;
     if (q.value !== undefined && !cmp(n.value === undefined ? undefined : String(n.value), q.value)) return false;
@@ -131,7 +132,18 @@ export function prune(node: AXNode): AXNode[] {
   // 葉の静的テキストだけが一致した場合は、前後の断片や隣の要素も必要なので親を一致として扱う
   if (!node.matched && node.children.some((c) => c.matched && c.role === "text" && c.children.length === 0)) node.matched = true;
   if (node.matched) { tidyChildren(node); return [node]; }
-  node.children = node.children.flatMap(prune);
+  // 一致した子の直前の見出し (同じ親の中) は設問番号などの文脈なので残す
+  const kept: AXNode[] = [];
+  let lastHeading: AXNode | null = null;
+  for (const c of node.children) {
+    if (c.role.startsWith("heading")) lastHeading = c;
+    const sub = prune(c);
+    if (sub.length) {
+      if (lastHeading && !sub[0].role.startsWith("heading") && kept[kept.length - 1] !== lastHeading) kept.push(lastHeading);
+      kept.push(...sub); lastHeading = null;
+    }
+  }
+  node.children = kept;
   if (!node.children.length) return [];
   return isBoring(node) ? node.children : [node];
 }

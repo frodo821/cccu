@@ -216,7 +216,17 @@ public enum SnapshotBuilder {
             node.matched = true
         }
         if node.matched { node.children = node.children.flatMap(collapse); return node }
-        node.children = node.children.compactMap(prune)
+        // 一致した子の直前の見出し (同じ親の中) は設問番号などの文脈なので残す
+        var kept: [Node] = []
+        var lastHeading: Node? = nil
+        for c in node.children {
+            if c.role == "heading" { lastHeading = c }
+            if let p = prune(c) {
+                if let h = lastHeading, p.role != "heading", !(kept.last.map { $0 === h } ?? false) { kept.append(h) }
+                kept.append(p); lastHeading = nil
+            }
+        }
+        node.children = kept
         return node.children.isEmpty ? nil : node
     }
 
@@ -231,9 +241,11 @@ public enum SnapshotBuilder {
             line += " [ref=\(ref)]"
         }
         for s in node.states { line += " [\(s)]" }
-        if node.title == nil, node.value == nil, node.actionable, let f = node.element.frame, f.width > 0 {
-            // 無名の操作要素はスクリーンショットと座標で照合するしかないので、画面座標を添える
-            line += " [at \(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))]"
+        if node.title == nil, node.value == nil, node.actionable, let f = node.element.frame {
+            // 無名の操作要素はスクリーンショットと座標で照合するしかないので、画面座標を添える。
+            // 可視領域外の要素は Chrome が幅または高さ 0 の仮の frame で報告するので [offscreen] にする
+            if f.width > 2 && f.height > 2 { line += " [at \(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))]" }
+            else { line += " [offscreen]" }
         }
         if let v = node.value {
             if let s = v as? String { line += ": " + quote(s, limit: options.valueLimit) }

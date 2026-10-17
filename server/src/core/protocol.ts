@@ -8,7 +8,7 @@ export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Modifier = "cmd" | "shift" | "alt" | "ctrl" | "fn";
 export type Scope = { pid: number } | { pid: number; windowNumber: number } | { ref: Ref };
-export type FindQuery = { role?: string; title?: string; value?: string; exact?: boolean };
+export type FindQuery = { role?: string; title?: string; value?: string; exact?: boolean; enabled?: boolean };
 
 export type ErrorKind =
   | "NOT_TRUSTED" | "STALE_REF" | "NOT_FOUND" | "UNSUPPORTED" | "AX_ERROR"
