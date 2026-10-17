@@ -277,7 +277,7 @@ final class GridTests: XCTestCase {
             return (ptr[i], ptr[i + 1], ptr[i + 2])
         }
         // 画面 x=1100 → 画像 x=50 に縦線 (白ではない)。x=1150 → 画像 x=75 は線なし (ラベル帯の外、画像中央)
-        let onLine = pixel(50, 50), offLine = pixel(75, 50)
+        let onLine = pixel(50, 50), offLine = pixel(75, 25)   // (75,50) は画面 y=600 の横線上なので避ける
         XCTAssertTrue(onLine.1 < 250, "line pixel should be tinted: \(onLine)")
         XCTAssertTrue(offLine == (255, 255, 255), "off-line pixel should stay white: \(offLine)")
     }

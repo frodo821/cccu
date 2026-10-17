@@ -67,7 +67,9 @@ func drawGrid(on image: CGImage, frame: CGRect, spacing: CGFloat) -> CGImage {
     ctx.setStrokeColor(CGColor(red: 1, green: 0, blue: 0.8, alpha: 0.55))
     ctx.setLineWidth(1)
     let font = CTFontCreateWithName("Menlo" as CFString, 11, nil)
+    // CTLineDraw はコンテキストの状態を変え、その後の線が描かれなくなるので、ラベルは状態を保存して描き、線を先に全部描く
     func label(_ text: String, at p: CGPoint) {
+        ctx.saveGState(); defer { ctx.restoreGState() }
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
         let bounds = CTLineGetBoundsWithOptions(line, [])
@@ -76,18 +78,16 @@ func drawGrid(on image: CGImage, frame: CGRect, spacing: CGFloat) -> CGImage {
         ctx.textPosition = CGPoint(x: p.x + 2, y: p.y)
         CTLineDraw(line, ctx)
     }
-    var x = (frame.minX / spacing).rounded(.up) * spacing
-    while x <= frame.maxX {
-        ctx.move(to: CGPoint(x: ix(x), y: 0)); ctx.addLine(to: CGPoint(x: ix(x), y: CGFloat(h))); ctx.strokePath()
-        label("\(Int(x))", at: CGPoint(x: ix(x) + 1, y: CGFloat(h) - 14))
-        x += spacing
-    }
-    var y = (frame.minY / spacing).rounded(.up) * spacing
-    while y <= frame.maxY {
-        ctx.move(to: CGPoint(x: 0, y: iy(y))); ctx.addLine(to: CGPoint(x: CGFloat(w), y: iy(y))); ctx.strokePath()
-        label("\(Int(y))", at: CGPoint(x: 1, y: iy(y) - 13))
-        y += spacing
-    }
+    let x0 = (frame.minX / spacing).rounded(.up) * spacing
+    let y0 = (frame.minY / spacing).rounded(.up) * spacing
+    var x = x0
+    while x <= frame.maxX { ctx.move(to: CGPoint(x: ix(x), y: 0)); ctx.addLine(to: CGPoint(x: ix(x), y: CGFloat(h))); ctx.strokePath(); x += spacing }
+    var y = y0
+    while y <= frame.maxY { ctx.move(to: CGPoint(x: 0, y: iy(y))); ctx.addLine(to: CGPoint(x: CGFloat(w), y: iy(y))); ctx.strokePath(); y += spacing }
+    x = x0
+    while x <= frame.maxX { label("\(Int(x))", at: CGPoint(x: ix(x) + 1, y: CGFloat(h) - 14)); x += spacing }
+    y = y0
+    while y <= frame.maxY { label("\(Int(y))", at: CGPoint(x: 1, y: iy(y) - 13)); y += spacing }
     return ctx.makeImage() ?? image
 }
 
