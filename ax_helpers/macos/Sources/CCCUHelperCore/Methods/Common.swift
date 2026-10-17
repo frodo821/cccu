@@ -240,7 +240,8 @@ extension Params {
         return { n in
             if let e = enabled, n.states.contains("disabled") == e { return false }
             if let r = role, n.role != r { return false }
-            if let t = title, !matches(n.title, t) { return false }
+            // title は要素名、または (role 指定なしなら) 分割された子テキストを連結したブロック文字列にも一致させる
+            if let t = title, !matches(n.title, t), !(role == nil && !n.children.isEmpty && matches(n.blockText, t)) { return false }
             if let v = value {
                 let sv: String? = (n.value as? String) ?? n.value.map { "\($0)" }
                 if !matches(sv, v) { return false }

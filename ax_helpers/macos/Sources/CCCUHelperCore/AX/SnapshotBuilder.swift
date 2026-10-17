@@ -27,6 +27,8 @@ final class Node {
     var children: [Node] = []
     var matched = false       // ui.find 用
     var ref: String?
+    /// 子の葉テキストを連結した文字列 (装飾で分割された文に対する検索用)
+    var blockText: String { children.filter { $0.role == "text" && $0.children.isEmpty }.compactMap { $0.title }.joined() }
 
     init(element: AXElement, role: String, title: String?, value: Any?, states: [String], actionable: Bool) {
         self.element = element; self.role = role; self.title = title
@@ -64,7 +66,6 @@ public enum SnapshotBuilder {
             count += 1
 
             let node = makeNode(el, role: role, options: options)
-            node.matched = match?(node) ?? false
 
             if depth < options.maxDepth && !leafRoles.contains(role) {
                 for child in el.children {
@@ -84,6 +85,11 @@ public enum SnapshotBuilder {
 
         guard let tree = walk(root, depth: 0) else {
             return SnapshotOutput(text: "", refs: [:], truncated: truncated)
+        }
+        // 一致判定はツリーが組み上がってから (子テキストを連結したブロック文字列にも一致させるため)
+        if let match = match {
+            func mark(_ n: Node) { n.matched = match(n); n.children.forEach(mark) }
+            mark(tree)
         }
         let forest: [Node]
         if let _ = match {
@@ -241,11 +247,14 @@ public enum SnapshotBuilder {
             line += " [ref=\(ref)]"
         }
         for s in node.states { line += " [\(s)]" }
-        if node.title == nil, node.value == nil, node.actionable, let f = node.element.frame {
-            // 無名の操作要素はスクリーンショットと座標で照合するしかないので、画面座標を添える。
-            // 可視領域外の要素は Chrome が幅または高さ 0 の仮の frame で報告するので [offscreen] にする
-            if f.width > 2 && f.height > 2 { line += " [at \(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))]" }
-            else { line += " [offscreen]" }
+        if node.actionable, let f = node.element.frame {
+            if f.width <= 2 || f.height <= 2 {
+                // 可視領域外の要素は Chrome が幅または高さ 0 の仮の frame で報告する。クリックすれば自動でスクロールされる
+                line += " [offscreen]"
+            } else if node.title == nil, node.value == nil {
+                // 無名の操作要素はスクリーンショットと座標で照合するしかないので、画面座標を添える
+                line += " [at \(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))]"
+            }
         }
         if let v = node.value {
             if let s = v as? String { line += ": " + quote(s, limit: options.valueLimit) }

@@ -14,7 +14,7 @@ export interface TargetInfo {
 }
 
 export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; within?: Ref; textLimit?: number }
-export type WaitCondition = { exists: FindQuery } | { gone: FindQuery } | { stable: number };
+export type WaitCondition = { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number };
 
 export interface Backend {
   readonly kind: "desktop" | "browser";

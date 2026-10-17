@@ -91,7 +91,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | `ui.performAction` | `{ref: Ref, action: string}` | `{}` — `AXPress` など AX アクション名そのまま |
 | `ui.click` | `{ref?: Ref, point?: Point, button?: "left"\|"right", count?: int, modifiers?: Modifier[]}` | `{method: "ax"\|"cg"}` |
 | `ui.focus` | `{ref: Ref}` | `{}` |
-| `ui.waitFor` | `{scope: Scope, condition: {exists: FindQuery} \| {gone: FindQuery} \| {stable: int}, timeoutMs: int}` | `{snapshot, text, refCount}` |
+| `ui.waitFor` | `{scope: Scope, condition: {exists: FindQuery, count?: int} \| {gone: FindQuery} \| {stable: int}, timeoutMs: int}` | `{snapshot, text, refCount}` — `count` は一致が N 個以上になるまで待つ (v1.6) |
 
 ### observe (v1.2)
 
@@ -161,6 +161,8 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - ref は操作可能または識別に有用なノードにのみ付与。`e1` から連番
 - 名前も値も無い操作要素には `[at x,y wxh]` (画面座標) を添える。スクリーンショットと照合して役割を判断するため。可視領域外で仮の frame (幅または高さ 0) しか無いものは `[offscreen]`
 - `ui.find` の結果には、一致要素の直前の見出し (同じ親の中) を文脈として残す (設問番号など)
+- `title` の一致は要素名のほか、role 指定が無ければ「子の葉テキストを連結した文字列」にも適用する (装飾で分割された文を 1 つの文字列として検索できる)
+- 画面外の操作要素 (幅または高さ 0 の仮の frame) は名前の有無にかかわらず `[offscreen]`
 - 同じ行にある静的テキストの断片 (インライン装飾で分割されたもの) は 1 つに結合する。横に隙間があれば空白を挟む
 - 名前の不可視文字 (ゼロ幅スペース、BOM、私用領域のアイコン文字など) は除去し、空になれば無名として扱う
 - 状態フラグ: `[focused] [disabled] [selected] [checked] [expanded] [collapsed]`

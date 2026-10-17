@@ -28,6 +28,8 @@ Reading pages
 Tips
 - `enabled: true` on `cu_find` / `cu_wait` picks only enabled controls: the current question's 確認 button among many, or "wait until 次へ進む becomes enabled" (`cu_wait exists: {role: "button", text: "次へ進む", enabled: true}`).
 - Do not batch clicks from one snapshot when a click can scroll or change the page; re-find right before each click.
+- `cu_wait exists` with `count: N` waits until the N-th match appears (the N-th feedback block on a one-question-at-a-time page). `cu_find text=` also matches sentences that are split into several text nodes by formatting.
+- `[offscreen]` on a control means it is outside the viewport; clicking it scrolls it into view first.
 - Roles are lower-case AX roles without the prefix: `button`, `textfield`, `textarea`, `checkbox`, `popupbutton`, `menuitem`, `sheet`, `window`.
 - `cu_type` with a ref focuses the element and inserts text at the caret through the accessibility API. `clear: true` replaces the content, `submit: true` presses Enter afterwards.
 - Menu shortcuts: `cu_key` with `target` set, e.g. `key: "n", modifiers: ["cmd"]` for a new document. The app is brought to the front first.

@@ -71,7 +71,7 @@ export interface Methods {
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
   "ui.waitFor": {
-    params: { scope: Scope; condition: { exists: FindQuery } | { gone: FindQuery } | { stable: number }; timeoutMs: number };
+    params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number };
     result: SnapshotResult;
   };
   "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };

@@ -28,7 +28,7 @@ const findShape = { role: z.string().optional(), text: z.string().optional(), va
 const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
 const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
 const pointerArg = z.enum(["human", "warp"]).optional().describe("Desktop: how the cursor travels for a real click/scroll. Default human (Fitts's-law motion); warp jumps instantly");
-const withinArg = z.string().optional().describe('Limit to the subtree of this ref. Browser apps are scoped to the page (webarea) by default; pass a window ref to see tabs and the address bar');
+const withinArg = z.string().optional().describe('Limit to the subtree of this snapshot ref (e.g. "s3/e5"), not a target id. Browser apps are scoped to the page by default; to see tabs or the address bar use target "window:<pid>:<n>" instead');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
 export function registerTools(server: McpServer, ctx: ToolContext) {
@@ -91,9 +91,9 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, exists: z.object(findShape).optional(), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000") } },
-    ({ target, within, exists, gone, stableMs, timeoutMs = 5000 }) => run(async () => {
-      const cond = exists ? { exists: toQuery(exists) } : gone ? { gone: toQuery(gone) } : { stable: stableMs ?? 500 };
+      inputSchema: { target: targetArg, within: withinArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000") } },
+    ({ target, within, exists, count, gone, stableMs, timeoutMs = 5000 }) => run(async () => {
+      const cond = exists ? { exists: toQuery(exists), count } : gone ? { gone: toQuery(gone) } : { stable: stableMs ?? 500 };
       return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined));
     }));
 

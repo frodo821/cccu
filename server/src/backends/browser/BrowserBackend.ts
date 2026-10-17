@@ -363,9 +363,10 @@ export class BrowserBackend implements Backend {
     }
     const wantExists = "exists" in cond;
     const query = wantExists ? cond.exists : cond.gone;
+    const minCount = wantExists ? (cond.count ?? 1) : 1;
     while (true) {
       const r = await this.find(target, query, opts);
-      if ((r.refCount > 0) === wantExists) return wantExists ? r : this.snapshot(target, opts);
+      if ((r.refCount >= minCount) === wantExists) return wantExists ? r : this.snapshot(target, opts);
       if (Date.now() >= deadline) throw new HelperError("TIMEOUT", `condition not met within ${timeoutMs}ms`);
       await sleep(150);
     }

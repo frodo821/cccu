@@ -118,10 +118,12 @@ export function matcher(q: FindQuery): (n: AXNode) => boolean {
   const role = q.role?.toLowerCase();
   const cmp = (s: string | undefined, needle: string) =>
     s !== undefined && (q.exact ? s === needle : s.toLowerCase().includes(needle.toLowerCase()));
+  const blockText = (n: AXNode) => n.children.filter((c) => c.role === "text" && c.children.length === 0).map((c) => c.title ?? "").join("");
   return (n) => {
     if (q.enabled !== undefined && n.states.includes("disabled") === q.enabled) return false;
     if (role && n.role !== role && !n.role.startsWith(role + "[")) return false;
-    if (q.title !== undefined && !cmp(n.title, q.title)) return false;
+    // title は要素名、または (role 指定なしなら) 分割された子テキストを連結したブロック文字列にも一致させる
+    if (q.title !== undefined && !cmp(n.title, q.title) && !(!role && n.children.length && cmp(blockText(n), q.title))) return false;
     if (q.value !== undefined && !cmp(n.value === undefined ? undefined : String(n.value), q.value)) return false;
     return true;
   };

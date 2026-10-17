@@ -66,15 +66,21 @@ public func registerUIMethods(_ d: Dispatcher) {
                 try act(el.pid, window: el.window, foreground: fg) { try el.perform(kAXPressAction) }
                 return ["method": fg ? "ax+foreground" : "ax"] as JSONObject
             }
-            guard let c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
+            guard var c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             let force = p.optBool("force") ?? false
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
-                // 前面に出した状態で、座標に実際にあるものを確認する。モーダルのスクリムや別の要素に遮られていれば黙ってクリックせずに知らせる。
-                // アクティブ化の通知よりウィンドウの重なり順の更新が遅れることがあるので、座標の要素が対象アプリのものになるまで少し待つ
+                // 前面に出した状態で、座標に実際にあるものを確認する。Chrome の AX の frame はスクロールやレイアウト変更より
+                // 遅れて更新されるので、対象が見つかるまで frame を読み直して再試行する。それでも別の要素なら (モーダルのスクリムなど) 知らせる
                 var hit = elementAt(c)
-                for _ in 0..<10 where hit?.pid != el.pid { spin(0.05); hit = elementAt(c) }
+                var tries = 0
+                while !force, let h = hit, !h.isRelated(to: el), tries < 12 {
+                    tries += 1
+                    spin(0.08)
+                    if let f = el.frame, f.width > 2, f.height > 2 { c = CGPoint(x: f.midX, y: f.midY) }
+                    hit = elementAt(c)
+                }
                 if !force, let hit = hit, !hit.isRelated(to: el) {
                     let hitRole = hit.role.map { SnapshotBuilder.normalizeRole($0, subrole: hit.subrole) } ?? "unknown"
                     let hitName = hit.title ?? hit.descriptionText ?? ""
@@ -115,10 +121,11 @@ public func registerUIMethods(_ d: Dispatcher) {
         let wantExists = cond.raw["exists"] != nil
         guard wantExists || cond.raw["gone"] != nil else { throw HelperError.invalidParams("condition needs exists, gone or stable") }
         let match = try cond.findQuery(wantExists ? "exists" : "gone")
+        let minCount = cond.optInt("count") ?? 1   // N 個以上あれば「存在」とみなす (同じ文言が増えるのを待つ用)
         opts.maxNodes = 5000
         while true {
             let out = SnapshotBuilder.build(root: root, options: opts, match: match)
-            let found = !out.refs.isEmpty
+            let found = out.refs.count >= minCount
             if found == wantExists {
                 return snapshotResult(wantExists ? out : SnapshotBuilder.build(root: root, options: p.snapshotOptions()))
             }
