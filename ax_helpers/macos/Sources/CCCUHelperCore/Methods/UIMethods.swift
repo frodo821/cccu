@@ -68,8 +68,20 @@ public func registerUIMethods(_ d: Dispatcher) {
             }
             guard let c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
+            let force = p.optBool("force") ?? false
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
+                // 前面に出した状態で、座標に実際にあるものを確認する。モーダルのスクリムや別の要素に遮られていれば黙ってクリックせずに知らせる。
+                // アクティブ化の通知よりウィンドウの重なり順の更新が遅れることがあるので、座標の要素が対象アプリのものになるまで少し待つ
+                var hit = elementAt(c)
+                for _ in 0..<10 where hit?.pid != el.pid { spin(0.05); hit = elementAt(c) }
+                if !force, let hit = hit, !hit.isRelated(to: el) {
+                    let hitRole = hit.role.map { SnapshotBuilder.normalizeRole($0, subrole: hit.subrole) } ?? "unknown"
+                    let hitName = hit.title ?? hit.descriptionText ?? ""
+                    var data: JSONObject = ["obstructedBy": ["role": hitRole, "title": hitName] as JSONObject, "point": ["x": c.x, "y": c.y] as JSONObject]
+                    if let d = hit.enclosingDialog { data["dialog"] = ["role": d.role.map { SnapshotBuilder.normalizeRole($0, subrole: d.subrole) } ?? "", "title": d.title ?? ""] as JSONObject }
+                    throw HelperError(.obstructed, "click point is covered by \(hitRole) \"\(hitName)\"\(hit.enclosingDialog != nil ? " inside a dialog" : ""); snapshot again and act on what covers it, or pass force: true", data: data)
+                }
                 try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer)
             }
             return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject

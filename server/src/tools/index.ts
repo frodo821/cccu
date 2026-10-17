@@ -19,7 +19,7 @@ const fail = (e: unknown): ToolResult => {
   return { content: [{ type: "text", text: msg }], isError: true };
 };
 const snap = (r: SnapshotResult): ToolResult =>
-  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.truncated ? " (truncated: narrow the scope or use cu_find)" : ""}\n${r.text}`);
+  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.truncated ? " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)" : ""}\n${r.text}`);
 
 const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optional();
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
@@ -98,8 +98,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     }));
 
   server.registerTool("cu_click",
-    { description: "Click an element (accessibility press when possible, otherwise a real click at its center). Runs in the background by default; if the UI did not change, retry with foreground: true.",
-      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg } },
+    { description: "Click an element (accessibility press when possible, otherwise a real click at its center). Runs in the background by default; if the UI did not change, retry with foreground: true. A real click fails with OBSTRUCTED when something else (a modal, a scrim) covers the point: act on that element instead, or pass force: true.",
+      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg, force: z.boolean().optional().describe("Desktop: click even if the point is covered by another element (an OBSTRUCTED error told you what covers it)") } },
     ({ ref, ...opts }) => run(async () => { const [b, r] = byRef(ref); return text(`clicked ${ref} via ${await b.click(r, opts)}`); }));
 
   server.registerTool("cu_type",

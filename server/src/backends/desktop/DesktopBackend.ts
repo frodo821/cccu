@@ -114,7 +114,7 @@ export class DesktopBackend implements Backend {
   async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs });
   }
-  async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp" }): Promise<string> {
+  async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean }): Promise<string> {
     return (await (await this.helper()).call("ui.click", { ref, ...opts })).method;
   }
   async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string> {

@@ -108,7 +108,35 @@ func waitFrontmost(_ pid: pid_t, timeout: TimeInterval) -> Bool {
     return isFrontmost(pid)
 }
 
+/// 画面座標にある要素 (システム全体のヒットテスト)
+func elementAt(_ p: CGPoint) -> AXElement? {
+    var out: AXUIElement?
+    guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(p.x), Float(p.y), &out) == .success, let e = out else { return nil }
+    return AXElement(e)
+}
+
 extension AXElement {
+    /// この要素と other が同じか、どちらかがもう一方の祖先か (ヒットテストは内側のテキストやアイコンを返すことがある)
+    func isRelated(to other: AXElement, maxDepth: Int = 12) -> Bool {
+        if CFEqual(raw, other.raw) { return true }
+        var cur: AXElement? = other
+        for _ in 0..<maxDepth { guard let c = cur?.element(kAXParentAttribute) else { break }; if CFEqual(c.raw, raw) { return true }; cur = c }
+        cur = self
+        for _ in 0..<maxDepth { guard let c = cur?.element(kAXParentAttribute) else { break }; if CFEqual(c.raw, other.raw) { return true }; cur = c }
+        return false
+    }
+    /// 最寄りのダイアログ/シート (モーダル) の要素
+    var enclosingDialog: AXElement? {
+        var cur: AXElement? = self
+        for _ in 0..<20 {
+            guard let c = cur else { return nil }
+            if let r = c.role, ["AXSheet", "AXDialog", "AXAlertDialog"].contains(r) || (c.subrole.map { ["AXDialog", "AXSystemDialog"].contains($0) } ?? false) { return c }
+            if c.role == kAXWindowRole { return nil }
+            cur = c.element(kAXParentAttribute)
+        }
+        return nil
+    }
+
     /// 実クリックや実打鍵の前に、要素を可視領域に入れる。ウェブ内容などは AXScrollToVisible を持つ。
     /// 戻り値はスクロール後の中心座標
     func ensureVisibleCenter() -> CGPoint? {

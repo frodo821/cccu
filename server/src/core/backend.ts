@@ -29,7 +29,7 @@ export interface Backend {
   waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult>;
 
   /** foreground: 効かなかった操作を「一瞬前面化して実行し、元のアプリへ戻す」でやり直すための指定 (desktop のみ意味を持つ) */
-  click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp" }): Promise<string>;
+  click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean }): Promise<string>;
   type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string>;
   key(target: string | undefined, key: string, modifiers?: Modifier[], opts?: { foreground?: boolean }): Promise<string>;
   scroll(ref: Ref, dx: number, dy: number, opts?: { foreground?: boolean; pointer?: "human" | "warp" }): Promise<string>;

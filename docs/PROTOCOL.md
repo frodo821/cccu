@@ -1,4 +1,4 @@
-# cccu helper protocol v1.5
+# cccu helper protocol v1.6
 
 MCP サーバー (クライアント) と OS 別アクセシビリティヘルパー (サーバー) の間の契約。
 `ax_helpers/*` の実装はすべてこの文書に従う。設計背景は `DESIGN.md` §4。
@@ -55,6 +55,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | -32004 | `UNSUPPORTED`    | その要素がそのアクション/属性に非対応 |
 | -32005 | `AX_ERROR`       | OS API の失敗。`data.axError` に生の数値 |
 | -32006 | `TIMEOUT`        | `ui.waitFor` 期限切れ |
+| -32007 | `OBSTRUCTED`     | 実クリックの座標が対象以外の要素に遮られている (モーダルのスクリムなど)。`data.obstructedBy` に遮っている要素、`data.dialog` にそれを含むダイアログ。`force: true` で強行 (v1.6) |
 | -32602 | `INVALID_PARAMS` | 引数不正 (JSON-RPC 標準コード) |
 | -32601 | `METHOD_NOT_FOUND` | (JSON-RPC 標準) |
 | -32700 | `PARSE_ERROR`    | (JSON-RPC 標準) |
@@ -179,6 +180,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.6: 実クリック前のヒットテストと `OBSTRUCTED` エラー、`ui.click` の `force`
 - 1.5: フィッツの法則によるポインタ移動とトラックパッド風スクロール、`pointer` パラメータ
 - 1.4: 前面化ポリシー (既定で背面操作)、`foreground` パラメータ、`app.launch`、操作系メソッドが `method` を返す
 - 1.3: `input.type` に `method` を追加、`submit` 時は実打鍵が既定

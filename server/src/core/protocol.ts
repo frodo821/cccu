@@ -12,7 +12,7 @@ export type FindQuery = { role?: string; title?: string; value?: string; exact?:
 
 export type ErrorKind =
   | "NOT_TRUSTED" | "STALE_REF" | "NOT_FOUND" | "UNSUPPORTED" | "AX_ERROR"
-  | "TIMEOUT" | "INVALID_PARAMS" | "METHOD_NOT_FOUND" | "PARSE_ERROR" | "INTERNAL";
+  | "TIMEOUT" | "OBSTRUCTED" | "INVALID_PARAMS" | "METHOD_NOT_FOUND" | "PARSE_ERROR" | "INTERNAL";
 
 export class HelperError extends Error {
   constructor(
@@ -66,7 +66,7 @@ export interface Methods {
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
   "ui.click": {
-    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp" };
+    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean };
     result: { method: string };
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };

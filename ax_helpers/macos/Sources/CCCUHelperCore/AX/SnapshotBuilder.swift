@@ -44,7 +44,7 @@ public enum SnapshotBuilder {
     ]
     /// expanded / collapsed を表示する意味があるロール (Chrome は多くのノードに AXExpanded=false を付ける)
     static let expandableRoles: Set<String> = [
-        "disclosuretriangle", "combobox", "popupbutton", "menubutton", "row", "outlinerow", "menubaritem", "menu", "menuitem", "tab", "treeitem", "button",
+        "disclosuretriangle", "combobox", "popupbutton", "menubutton", "row", "outlinerow", "menubaritem", "menu", "menuitem", "tab", "treeitem",
     ]
     /// 子をたどらないロール (巨大になりがち、または中身が意味を持たない)
     static let leafRoles: Set<String> = ["menubar", "ruler"]   // メニューはタイトル行だけ、ルーラーは中身を出さない

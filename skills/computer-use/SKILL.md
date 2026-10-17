@@ -23,6 +23,7 @@ Reading pages
 - Long text is cut at 80 characters. Pass `textLimit` (for example 400) to `cu_snapshot` / `cu_find` when you need to read a passage or an explanation.
 - Unnamed controls show `[at x,y wxh]` (screen coordinates). Take `cu_screenshot` of the window, map those coordinates onto the image (the screenshot result tells you the captured area and scale) and decide what the control does from its icon.
 - Clicking scrolls off-screen elements into view automatically, including elements inside scrollable panels. If a click still reports success but nothing changed, re-find the element and check its position with `cu_attributes` (`AXFrame`).
+- A real click fails with `OBSTRUCTED` when the point is covered by something else, typically a modal dialog or its backdrop; the error names the covering element and the dialog it belongs to. Snapshot again and act on the dialog (its buttons, or the dialog element itself when "click anywhere to continue"). Use `force: true` only when you know the cover is harmless.
 
 Tips
 - Roles are lower-case AX roles without the prefix: `button`, `textfield`, `textarea`, `checkbox`, `popupbutton`, `menuitem`, `sheet`, `window`.
