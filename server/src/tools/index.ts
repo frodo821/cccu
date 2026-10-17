@@ -19,7 +19,7 @@ const fail = (e: unknown): ToolResult => {
   return { content: [{ type: "text", text: msg }], isError: true };
 };
 const snap = (r: SnapshotResult): ToolResult =>
-  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.truncated ? " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)" : ""}\n${r.text}`);
+  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${r.truncated ? " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)" : ""}\n${r.text}`);
 
 const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optional();
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
@@ -91,10 +91,10 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000") } },
-    ({ target, within, exists, count, gone, stableMs, timeoutMs = 5000 }) => run(async () => {
+      inputSchema: { target: targetArg, within: withinArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000"), textLimit: textLimitArg } },
+    ({ target, within, exists, count, gone, stableMs, timeoutMs = 5000, textLimit }) => run(async () => {
       const cond = exists ? { exists: toQuery(exists), count } : gone ? { gone: toQuery(gone) } : { stable: stableMs ?? 500 };
-      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined));
+      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined, textLimit));
     }));
 
   server.registerTool("cu_click",

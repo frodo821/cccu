@@ -88,7 +88,14 @@ public func registerUIMethods(_ d: Dispatcher) {
                     if let d = hit.enclosingDialog { data["dialog"] = ["role": d.role.map { SnapshotBuilder.normalizeRole($0, subrole: d.subrole) } ?? "", "title": d.title ?? ""] as JSONObject }
                     throw HelperError(.obstructed, "click point is covered by \(hitRole) \"\(hitName)\"\(hit.enclosingDialog != nil ? " inside a dialog" : ""); snapshot again and act on what covers it, or pass force: true", data: data)
                 }
-                try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer)
+                // ポインタの移動中に前の操作のスクロールが続いていると押下位置がずれるので、移動後にもう一度確かめ、動いていれば追従する
+                let recheck: (CGPoint) -> CGPoint? = { pt in
+                    if let h = elementAt(pt), h.isRelated(to: el) { return nil }
+                    guard let f = el.frame, f.width > 2, f.height > 2 else { return nil }
+                    let c2 = CGPoint(x: f.midX, y: f.midY)
+                    return hypot(c2.x - pt.x, c2.y - pt.y) > 2 ? c2 : nil
+                }
+                try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheck)
             }
             return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject
         }
@@ -125,7 +132,7 @@ public func registerUIMethods(_ d: Dispatcher) {
         opts.maxNodes = 5000
         while true {
             let out = SnapshotBuilder.build(root: root, options: opts, match: match)
-            let found = out.refs.count >= minCount
+            let found = out.matches >= minCount   // 祖先に付く ref ではなく一致数で判定する
             if found == wantExists {
                 return snapshotResult(wantExists ? out : SnapshotBuilder.build(root: root, options: p.snapshotOptions()))
             }

@@ -85,13 +85,13 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | method | params | result |
 |--------|--------|--------|
 | `ui.snapshot` | `{scope: Scope, maxDepth?: int, maxNodes?: int, interestingOnly?: boolean, textLimit?: int}` | `{snapshot: string, text: string, refCount: int, truncated: boolean}` — `textLimit` は値・テキストの切り詰め長 (既定 80) |
-| `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int}` | `{snapshot, text, refCount}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ |
+| `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int, textLimit?: int}` | `{snapshot, text, refCount, matches}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ。`matches` は一致数 (祖先に付く ref は含まない) |
 | `ui.attributes` | `{ref: Ref, names?: string[]}` | `{attributes: {[AXName]: value}}` |
 | `ui.setAttribute` | `{ref: Ref, name: string, value: any}` | `{}` |
 | `ui.performAction` | `{ref: Ref, action: string}` | `{}` — `AXPress` など AX アクション名そのまま |
 | `ui.click` | `{ref?: Ref, point?: Point, button?: "left"\|"right", count?: int, modifiers?: Modifier[]}` | `{method: "ax"\|"cg"}` |
 | `ui.focus` | `{ref: Ref}` | `{}` |
-| `ui.waitFor` | `{scope: Scope, condition: {exists: FindQuery, count?: int} \| {gone: FindQuery} \| {stable: int}, timeoutMs: int}` | `{snapshot, text, refCount}` — `count` は一致が N 個以上になるまで待つ (v1.6) |
+| `ui.waitFor` | `{scope: Scope, condition: {exists: FindQuery, count?: int} \| {gone: FindQuery} \| {stable: int}, timeoutMs: int, textLimit?: int}` | `{snapshot, text, refCount, matches}` — `count` は一致数 (`matches`) が N 以上になるまで待つ (v1.6) |
 
 ### observe (v1.2)
 
@@ -173,7 +173,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 ## 7. ref のライフサイクル
 
 - `ui.snapshot` / `ui.find` / `ui.waitFor` は新しい snapshot id を発行する (`s1` から連番、プロセス内で一意)
-- ヘルパーは直近 8 スナップショットの `ref → 要素ハンドル` 表を保持し、それ以前は破棄する
+- ヘルパーは直近 40 スナップショットの `ref → 要素ハンドル` 表を保持し、それ以前は破棄する (`ui.find` / `ui.waitFor` も 1 回ごとにスナップショットを作るため、8 では数回の操作で古くなった)
 - ref 使用時、要素の生存確認に失敗したら `STALE_REF`
 - スナップショットを跨いだ同一性は保証しない
 

@@ -26,7 +26,7 @@ export interface Backend {
   activate(target: string): Promise<string>;
   snapshot(target: string, opts?: SnapshotOptions): Promise<SnapshotResult>;
   find(target: string, query: FindQuery, opts?: SnapshotOptions): Promise<SnapshotResult>;
-  waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult>;
+  waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number): Promise<SnapshotResult>;
 
   /** foreground: 効かなかった操作を「一瞬前面化して実行し、元のアプリへ戻す」でやり直すための指定 (desktop のみ意味を持つ) */
   click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean }): Promise<string>;

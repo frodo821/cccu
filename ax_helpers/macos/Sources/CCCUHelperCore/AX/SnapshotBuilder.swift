@@ -3,7 +3,7 @@ import Foundation
 
 /// AX ツリーを走査して PROTOCOL.md §6 のテキスト記法と ref 表を作る。
 public struct SnapshotOptions {
-    public var maxDepth = 40
+    public var maxDepth = 80
     public var maxNodes = 800
     public var interestingOnly = true
     public var valueLimit = 80
@@ -14,6 +14,7 @@ public struct SnapshotOutput {
     public let text: String
     public let refs: [String: AXElement]
     public let truncated: Bool
+    public var matches: Int = 0   // ui.find での一致数 (祖先の ref は含まない)
 }
 
 /// 走査で得た中間ノード
@@ -87,8 +88,9 @@ public enum SnapshotBuilder {
             return SnapshotOutput(text: "", refs: [:], truncated: truncated)
         }
         // 一致判定はツリーが組み上がってから (子テキストを連結したブロック文字列にも一致させるため)
+        var matchCount = 0
         if let match = match {
-            func mark(_ n: Node) { n.matched = match(n); n.children.forEach(mark) }
+            func mark(_ n: Node) { n.matched = match(n); if n.matched { matchCount += 1 }; n.children.forEach(mark) }
             mark(tree)
         }
         let forest: [Node]
@@ -103,7 +105,7 @@ public enum SnapshotBuilder {
         var lines: [String] = []
         var refCounter = 0
         for n in forest { render(n, indent: 0, lines: &lines, refs: &refs, counter: &refCounter, options: options) }
-        return SnapshotOutput(text: lines.joined(separator: "\n"), refs: refs, truncated: truncated)
+        return SnapshotOutput(text: lines.joined(separator: "\n"), refs: refs, truncated: truncated, matches: matchCount)
     }
 
     static func makeNode(_ el: AXElement, role: String, options: SnapshotOptions) -> Node {

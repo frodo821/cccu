@@ -3,7 +3,7 @@ import Foundation
 /// スナップショット id と ref → AXElement の対応表。直近 N スナップショットだけ保持する (PROTOCOL.md §7)。
 public final class RefTable {
     public static let shared = RefTable()
-    public var capacity = 8
+    public var capacity = 40   // cu_find / cu_wait も 1 回ごとにスナップショットを作るので、8 では数回の操作で古くなる
 
     private var counter = 0
     private var order: [String] = []

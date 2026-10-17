@@ -85,14 +85,23 @@ public enum Input {
 
     /// pid を渡すと postToPid で対象プロセスへ直接送る (カーソルを動かさず、前面化もしない)。
     /// size を渡すと着地点に小さな散らばりを入れ、フィッツの法則の目標幅として使う
-    public static func click(at p: CGPoint, size: CGSize? = nil, button: String? = nil, count: Int = 1, modifiers: [String] = [], pid: pid_t? = nil, mode: PointerMode = pointerMode) throws {
+    /// recheck: 移動後・押下直前に呼ぶ。対象がずれていれば新しい中心を返し、そこへ短く移動してから押す
+    public static func click(at p: CGPoint, size: CGSize? = nil, button: String? = nil, count: Int = 1, modifiers: [String] = [], pid: pid_t? = nil, mode: PointerMode = pointerMode, recheck: ((CGPoint) -> CGPoint?)? = nil) throws {
         let (btn, downT, upT, _) = try buttonSpec(button)
         let flags = try KeyCodes.flags(modifiers)
         var rng = SystemRandomNumberGenerator()
         let origin = currentLocation
         let human = pid == nil && mode == .human
-        let target = human ? Fitts.landing(center: p, size: size, rng: &rng) : p
+        var target = human ? Fitts.landing(center: p, size: size, rng: &rng) : p
         if pid == nil { move(to: target, targetWidth: min(size?.width ?? 16, size?.height ?? 16), mode: mode) }
+        if pid == nil, let recheck = recheck {
+            for _ in 0..<3 {
+                spin(0.03)
+                guard let moved = recheck(target) else { break }
+                target = human ? Fitts.landing(center: moved, size: size, rng: &rng) : moved
+                move(to: target, targetWidth: min(size?.width ?? 16, size?.height ?? 16), mode: mode)
+            }
+        }
         for i in 1...max(count, 1) {
             let down = CGEvent(mouseEventSource: source, mouseType: downT, mouseCursorPosition: target, mouseButton: btn)
             let up = CGEvent(mouseEventSource: source, mouseType: upT, mouseCursorPosition: target, mouseButton: btn)

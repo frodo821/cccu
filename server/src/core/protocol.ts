@@ -45,6 +45,7 @@ export interface WindowInfo {
 }
 export interface SnapshotResult {
   snapshot: string; text: string; refCount: number; truncated: boolean;
+  matches?: number;   // find / waitFor: 一致数 (祖先の ref は含まない)
 }
 
 /** method 名 → { params, result } の対応表。呼び出し側はこの表で型が付く。 */
@@ -71,7 +72,7 @@ export interface Methods {
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
   "ui.waitFor": {
-    params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number };
+    params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number };
     result: SnapshotResult;
   };
   "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };

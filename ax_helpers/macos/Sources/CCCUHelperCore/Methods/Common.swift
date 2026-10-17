@@ -262,5 +262,5 @@ extension Params {
 
 func snapshotResult(_ out: SnapshotOutput) -> JSONObject {
     let id = RefTable.shared.register(out.refs)
-    return ["snapshot": id, "text": out.text, "refCount": out.refs.count, "truncated": out.truncated]
+    return ["snapshot": id, "text": out.text, "refCount": out.refs.count, "truncated": out.truncated, "matches": out.matches]
 }

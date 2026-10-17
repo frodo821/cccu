@@ -20,7 +20,7 @@ interface ElementRef { backendNodeId: number; frame: Frame }
 interface Snapshot { targetId: string; refs: Map<string, ElementRef> }
 
 const DEFAULT_CDP = "http://127.0.0.1:9222";
-const KEEP_SNAPSHOTS = 8;
+const KEEP_SNAPSHOTS = 40;
 const MAX_EVENTS = 200;
 
 /** ブラウザで購読できるイベント名 (cu_observe の notifications) */
@@ -330,8 +330,9 @@ export class BrowserBackend implements Backend {
     const s = await this.session(this.targetIdOf(target));
     const root = await this.tree(s, opts.within);
     if (!root) throw new HelperError("NOT_FOUND", "page has no accessibility tree");
-    markMatches(root, matcher(query));
-    return this.finish(s, prune(root), { ...opts, maxNodes: opts.maxNodes ?? 5000 });
+    const matches = markMatches(root, matcher(query));
+    const r = this.finish(s, prune(root), { ...opts, maxNodes: opts.maxNodes ?? 5000 });
+    return { ...r, matches };
   }
 
   private finish(s: Session, forest: AXNode[], opts: SnapshotOptions): SnapshotResult {
@@ -348,9 +349,9 @@ export class BrowserBackend implements Backend {
     return { snapshot: this.register(s.targetId, refs), text: texts.join("\n"), refCount: refs.size, truncated };
   }
 
-  async waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult> {
+  async waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number): Promise<SnapshotResult> {
     const deadline = Date.now() + timeoutMs;
-    const opts = { within };
+    const opts = { within, textLimit };
     if ("stable" in cond) {
       let last = (await this.snapshot(target, opts)).text, since = Date.now();
       while (Date.now() < deadline) {
@@ -366,7 +367,7 @@ export class BrowserBackend implements Backend {
     const minCount = wantExists ? (cond.count ?? 1) : 1;
     while (true) {
       const r = await this.find(target, query, opts);
-      if ((r.refCount >= minCount) === wantExists) return wantExists ? r : this.snapshot(target, opts);
+      if (((r.matches ?? r.refCount) >= minCount) === wantExists) return wantExists ? r : this.snapshot(target, opts);
       if (Date.now() >= deadline) throw new HelperError("TIMEOUT", `condition not met within ${timeoutMs}ms`);
       await sleep(150);
     }
