@@ -6,7 +6,12 @@ import Foundation
 /// 差分が大きすぎる (ページ遷移など) ときは新しいツリー全体を返し、変化が無ければその旨を返す。
 public enum ChangeReport {
     public static let settleMax: TimeInterval = 1.2      // 変化が現れるまで待つ上限
-    static let fullThresholdRatio = 0.75                 // 追加行が全体のこの割合を超えたら (ほぼ別ページ) 全体を返す
+    static let fullThresholdRatio = 0.5                  // 追加行が全体のこの割合を超えたら (別のステップ) 全体を返す
+
+    /// 操作要素 (ref 付き) や状態フラグを含む行があるか。無ければテキストの再分割などの雑音とみなす
+    static func substantive(_ lines: [String]) -> Bool {
+        lines.contains { $0.contains("[ref=") || $0.contains("[disabled]") || $0.contains("[selected]") || $0.contains("[checked]") || $0.contains("[expanded]") }
+    }
 
     /// 操作を囲む。mode: "none" (既定: 何もしない) | "diff" | "full"
     static func wrap(_ p: Params, anchor: AXElement?, pid: pid_t?, _ body: () throws -> JSONObject) throws -> JSONObject {
@@ -31,18 +36,25 @@ public enum ChangeReport {
             spin(0.12)
             after = SnapshotBuilder.build(root: root, options: opts)
             let key = normalize(after.text)
-            if key == last { if key != beforeKey { stable += 1; if stable >= 1 { break } } }
-            else { stable = 0 }
+            if key == last, key != beforeKey {
+                // 変化が止まった。ただし静的テキストの並びが変わっただけ (スクロールで画面外のテキストが再分割される) なら、
+                // 本命の変化 (操作要素や状態) が後から来ることがあるので期限まで待ち続ける
+                stable += 1
+                if stable >= 1 {
+                    let (a, r) = diff(before: before, after: after.text)
+                    if substantive(a + r) { break }
+                }
+            } else { stable = 0 }
             last = key
         }
         let id = RefTable.shared.register(after.refs)
-        var changes: JSONObject = ["snapshot": id, "refCount": after.refs.count]
+        var changes: JSONObject = ["snapshot": id, "refCount": after.refs.count, "waitMs": Int(wait * 1000)]
         if normalize(after.text) == beforeKey {
             changes["changed"] = false
         } else {
             let (added, removed) = diff(before: before, after: after.text)
             let afterLines = after.text.split(separator: "\n").count
-            // 差分が全体より長いか、ほぼ全部入れ替わったときだけ全体を返す (スクロールやフィードバック挿入では差分の方が短い)
+            // 差分が全体より長いか、半分以上が新しい行 (ステップ遷移) なら全体を返す。フィードバックの挿入やスクロールでは差分の方が短い
             let tooBig = added.count + removed.count > afterLines || Double(added.count) > Double(max(afterLines, 1)) * fullThresholdRatio
             changes["changed"] = true
             changes["added"] = added.count
@@ -77,25 +89,49 @@ public enum ChangeReport {
         return nil
     }
 
-    /// 行の多重集合の差 (順序は after / before の出現順)。比較は正規化した行で行う:
-    /// ref 番号 (振り直される)、`[offscreen]` / `[focused]` / `[at x,y wxh]` (スクロールやフォーカス移動で変わるだけで内容の変化ではない) を除く
+    /// 行の差分 (順序は after / before の出現順)。比較は正規化した行で行う:
+    /// ref 番号 (振り直される)、`[offscreen]` / `[focused]` / `[at x,y wxh]` (スクロールやフォーカス移動で変わるだけで内容の変化ではない) を除く。
+    /// 位置を考慮する LCS で対応付ける (多重集合の差だと、前のステップと同じ文言の選択肢が離れた行と対応してしまい、新しい ref が差分から抜けた)。
+    /// 大きすぎるときは多重集合の差に落とす
     static func diff(before: String, after: String) -> (added: [String], removed: [String]) {
         let b = before.split(separator: "\n").map(String.init)
         let a = after.split(separator: "\n").map(String.init)
+        let bk = b.map(normalizeLine), ak = a.map(normalizeLine)
+        if b.count * a.count > 4_000_000 { return multisetDiff(a: a, ak: ak, b: b, bk: bk) }
+        // LCS 表 (後ろから)
+        let n = b.count, m = a.count
+        var dp = [Int](repeating: 0, count: (n + 1) * (m + 1))
+        func at(_ i: Int, _ j: Int) -> Int { dp[i * (m + 1) + j] }
+        if n > 0 && m > 0 {
+            for i in stride(from: n - 1, through: 0, by: -1) {
+                for j in stride(from: m - 1, through: 0, by: -1) {
+                    dp[i * (m + 1) + j] = bk[i] == ak[j] ? at(i + 1, j + 1) + 1 : max(at(i + 1, j), at(i, j + 1))
+                }
+            }
+        }
+        var added: [String] = [], removed: [String] = []
+        var i = 0, j = 0
+        while i < n && j < m {
+            if bk[i] == ak[j] { i += 1; j += 1 }
+            else if at(i + 1, j) > at(i, j + 1) { removed.append(b[i]); i += 1 }
+            else if at(i + 1, j) < at(i, j + 1) { added.append(a[j]); j += 1 }
+            else { removed.append(b[i]); added.append(a[j]); i += 1; j += 1 }   // 同点なら同じ位置の行が変わったとみなす
+
+        }
+        while i < n { removed.append(b[i]); i += 1 }
+        while j < m { added.append(a[j]); j += 1 }
+        return (added, removed)
+    }
+
+    static func multisetDiff(a: [String], ak: [String], b: [String], bk: [String]) -> (added: [String], removed: [String]) {
         var counts: [String: Int] = [:]
-        for l in b { counts[normalizeLine(l), default: 0] += 1 }
+        for k in bk { counts[k, default: 0] += 1 }
         var added: [String] = []
-        for l in a {
-            let k = normalizeLine(l)
-            if let n = counts[k], n > 0 { counts[k] = n - 1 } else { added.append(l) }
-        }
-        var removed: [String] = []
+        for (l, k) in zip(a, ak) { if let n = counts[k], n > 0 { counts[k] = n - 1 } else { added.append(l) } }
         var acounts: [String: Int] = [:]
-        for l in a { acounts[normalizeLine(l), default: 0] += 1 }
-        for l in b {
-            let k = normalizeLine(l)
-            if let n = acounts[k], n > 0 { acounts[k] = n - 1 } else { removed.append(l) }
-        }
+        for k in ak { acounts[k, default: 0] += 1 }
+        var removed: [String] = []
+        for (l, k) in zip(b, bk) { if let n = acounts[k], n > 0 { acounts[k] = n - 1 } else { removed.append(l) } }
         return (added, removed)
     }
 

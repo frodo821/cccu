@@ -27,7 +27,7 @@ export class HelperError extends Error {
 }
 
 /** 操作後の変化 (report: diff|full) */
-export interface Changes { snapshot: string; refCount: number; changed: boolean; added?: number; removed?: number; addedLines?: string[]; removedLines?: string[]; full?: string }
+export interface Changes { snapshot: string; refCount: number; changed: boolean; waitMs?: number; added?: number; removed?: number; addedLines?: string[]; removedLines?: string[]; full?: string }
 export interface SessionStatus { active: boolean; pid?: number; blocking?: boolean; remainingSeconds?: number }
 export interface HelloResult {
   protocolVersion: string;

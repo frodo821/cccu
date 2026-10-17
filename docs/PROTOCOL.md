@@ -201,6 +201,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.16: 変化の報告: 位置を考慮する LCS 差分 (同名の行を離れた位置と対応付けない)。操作要素や状態を含まないテキストだけの変化では期限まで待ち続ける (スクロール時のテキスト再分割で早期返却しない)。`changes.waitMs`。全体返却は追加行が 50% 超のとき
 - 1.15: 変化の報告: `reportWaitMs` (待ち時間、既定 1200)。比較から `[offscreen]` / `[focused]` / `[at …]` を除外 (スクロールやフォーカス移動だけでは「変化なし」)。全体返却は差分が全体より長いか追加行が 75% 超のときだけ
 - 1.14: `screen.capture` に `grid` (画面座標のグリッド線とラベルを描く間隔 px)。AX ツリーが使えないときのフォールバック (`ui.click` の `point` と組み合わせる)
 - 1.13: 操作後の変化の報告。`ui.click` / `ui.setAttribute` / `ui.performAction` / `input.type` / `input.key` が `report: "none"|"diff"|"full"` (既定 none) と `textLimit` を受け取り、結果に `changes: {snapshot, refCount, changed, added?, removed?, addedLines?, removedLines?, full?}` を添える。対象は要素の webarea (無ければウィンドウ、ref が無ければアプリの最前面 webarea)。操作後、変化が現れて安定するまで最大 1.2 秒待つ。差分が 60 行超または 4 割超なら `full` に新しいツリー全体

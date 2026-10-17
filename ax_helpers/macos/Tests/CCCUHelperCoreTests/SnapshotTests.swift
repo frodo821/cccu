@@ -261,6 +261,14 @@ final class ChangeReportTests: XCTestCase {
         XCTAssertEqual(removed, [])
         // スクロールで [offscreen] / [at] が変わっただけなら変化なし
         XCTAssertEqual(ChangeReport.normalize("- button \"x\" [ref=e1] [offscreen]\n- button [ref=e2] [at 10,20 30x40]"), ChangeReport.normalize("- button \"x\" [ref=e7]\n- button [ref=e9] [at 10,60 30x40]"))
+        // 位置を考慮する: Q1 の "compatible" が無効になり、Q5 にも同名のボタンがある場合、Q1 側の行が変化として出る
+        let b2 = "- button \"compatible\" [ref=e1]\n- button \"確認\" [ref=e2]\n- button \"compatible\" [ref=e3] [disabled]"
+        let a2 = "- button \"compatible\" [ref=e1] [disabled]\n- button \"確認\" [ref=e2] [disabled]\n- button \"compatible\" [ref=e3] [disabled]"
+        let d2 = ChangeReport.diff(before: b2, after: a2)
+        XCTAssertEqual(d2.added, ["- button \"compatible\" [ref=e1] [disabled]", "- button \"確認\" [ref=e2] [disabled]"])
+        XCTAssertEqual(d2.removed, ["- button \"compatible\" [ref=e1]", "- button \"確認\" [ref=e2]"])
+        XCTAssertTrue(ChangeReport.substantive(["  - button \"x\" [ref=e2]"]))
+        XCTAssertFalse(ChangeReport.substantive(["  - text \"a b\"", "  - text \"a\""]))
         // [disabled] の変化は残る
         XCTAssertNotEqual(ChangeReport.normalizeLine("- button \"確認\" [disabled]"), ChangeReport.normalizeLine("- button \"確認\""))
         XCTAssertEqual(ChangeReport.stripRefs("- button \"x\" [ref=e12] [disabled]"), "- button \"x\" [disabled]")

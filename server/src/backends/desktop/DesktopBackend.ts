@@ -144,7 +144,7 @@ export class DesktopBackend implements Backend {
   }
   /** 操作後の変化を読みやすく: 変化なし / 追加・削除行 / 大きな変化は全体 */
   private static formatChanges(c: Changes): string {
-    if (!c.changed) return `no visible change within ${1.2}s (snapshot=${c.snapshot})`;
+    if (!c.changed) return `no visible change within ${((c.waitMs ?? 1200) / 1000).toFixed(1)}s (snapshot=${c.snapshot})`;
     if (c.full !== undefined) return `changed a lot (+${c.added} -${c.removed} lines); new tree (snapshot=${c.snapshot} refs=${c.refCount}):\n${c.full}`;
     const lines = [...(c.addedLines ?? []).map((l) => "+ " + l.trimStart()), ...(c.removedLines ?? []).map((l) => "- " + l.trimStart())];
     return `changes (snapshot=${c.snapshot} refs=${c.refCount}): +${c.added} -${c.removed}\n${lines.join("\n")}`;
