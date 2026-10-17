@@ -4,7 +4,7 @@
   "description": "Drive Chrome and macOS apps through their accessibility trees: snapshot, find, click, type.",
   "version": "0.3.2",
   "author": {
-    "name": "csakai"
+    "name": "frodo821"
   },
   "license": "MIT"
 }

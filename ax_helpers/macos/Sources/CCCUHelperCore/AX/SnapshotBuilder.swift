@@ -138,7 +138,11 @@ public enum SnapshotBuilder {
 
     /// 名前から不可視文字 (ゼロ幅スペース、BOM、単語結合子、NBSP など) と前後の空白を取り除く。
     /// アイコンフォントのボタンは名前がこれらだけで構成されていることが多く、空扱いにしないと「無名」と判定できない
-    static let invisible = CharacterSet(charactersIn: "\u{200B}\u{200C}\u{200D}\u{2060}\u{FEFF}\u{00A0}\u{E000}-\u{F8FF}")
+    static let invisible: CharacterSet = {
+        var set = CharacterSet(charactersIn: "\u{200B}\u{200C}\u{200D}\u{2060}\u{FEFF}\u{00A0}")
+        set.insert(charactersIn: Unicode.Scalar(0xE000)!...Unicode.Scalar(0xF8FF)!)   // 私用領域 (アイコンフォント)
+        return set
+    }()
     public static func cleanName(_ s: String) -> String {
         String(String.UnicodeScalarView(s.unicodeScalars.filter { !invisible.contains($0) })).trimmingCharacters(in: .whitespacesAndNewlines)
     }

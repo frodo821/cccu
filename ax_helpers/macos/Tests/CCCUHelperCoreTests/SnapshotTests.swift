@@ -17,6 +17,12 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(SnapshotBuilder.quote(String(repeating: "x", count: 100), limit: 5), "\"xxxxx…\"")
     }
 
+    func testCleanNameStripsInvisibleAndIconGlyphs() {
+        XCTAssertEqual(SnapshotBuilder.cleanName("\u{F10A} Item 42"), "Item 42")   // 私用領域のアイコン + 空白
+        XCTAssertEqual(SnapshotBuilder.cleanName("\u{200B}\u{FEFF}"), "")
+        XCTAssertEqual(SnapshotBuilder.cleanName("  Save\u{00A0}"), "Save")
+    }
+
     func testKeyCodes() {
         XCTAssertEqual(KeyCodes.code(for: "Enter"), 36)
         XCTAssertEqual(KeyCodes.code(for: "a"), 0)
