@@ -121,10 +121,19 @@ private func clickBody(_ p: Params) throws -> JSONObject {
                     throw HelperError(.obstructed, "click point is covered by \(hitRole) \"\(hitName)\"\(hit.enclosingDialog != nil ? " inside a dialog" : ""); snapshot again and act on what covers it, or pass force: true", data: data)
                 }
                 // ポインタの移動中に前の操作のスクロールが続いていると押下位置がずれるので、移動後にもう一度確かめ、動いていれば追従する
+                var refreshed = false
                 let recheck: (CGPoint) -> CGPoint? = { pt in
                     if let h = elementAt(pt), h.isRelated(to: el) { return nil }
-                    guard let f = el.frame, f.width > 2, f.height > 2 else { return nil }
-                    let c2 = CGPoint(x: f.midX, y: f.midY)
+                    guard var f = el.frame, f.width > 2, f.height > 2 else { return nil }
+                    var c2 = CGPoint(x: f.midX, y: f.midY)
+                    if hypot(c2.x - pt.x, c2.y - pt.y) <= 2, !refreshed {
+                        // 座標に別のものがあるのに frame は変わっていない: frame が古い (前の操作でページがスクロールした)。
+                        // AXScrollToVisible で frame を更新させてから読み直す
+                        refreshed = true
+                        try? el.perform("AXScrollToVisible")
+                        spin(0.35)
+                        if let nf = el.frame, nf.width > 2, nf.height > 2 { f = nf; c2 = CGPoint(x: f.midX, y: f.midY) }
+                    }
                     return hypot(c2.x - pt.x, c2.y - pt.y) > 2 ? c2 : nil
                 }
                 var pressed = c
@@ -151,7 +160,15 @@ private func clickBody(_ p: Params) throws -> JSONObject {
                 // (「トレーニングを終了」など) が出たケースで 2 回目がそれを押してしまったことがある
                 let focusedNow = diag["focusedAfter"] as? Bool ?? false
                 let sameState = el.isEnabled && (el.title ?? el.descriptionText ?? "") == (diag["name"] as? String ?? "")
-                if let a = after, a.width > 2, a.height > 2, moved, outside || hitUnrelated, count == 1, !focusedNow, sameState {
+                var target2 = after
+                if !moved, hitUnrelated, !focusedNow, sameState, count == 1 {
+                    // frame は動いていないのに押下点には別のものがある: frame が古い。更新させて、動いていれば押し直し候補にする
+                    try? el.perform("AXScrollToVisible")
+                    spin(0.35)
+                    if let nf = el.frame, let a = after, hypot(nf.origin.x - a.origin.x, nf.origin.y - a.origin.y) > 1 { target2 = nf; diag["staleFrame"] = true }
+                }
+                let movedNow = moved || (diag["staleFrame"] as? Bool ?? false)
+                if let a = target2, a.width > 2, a.height > 2, movedNow, outside || hitUnrelated, count == 1, !focusedNow, sameState {
                     let c2 = CGPoint(x: a.midX, y: a.midY)
                     if let h = elementAt(c2), h.isStrictlyRelated(to: el) {
                         try Input.click(at: c2, size: a.size, button: button, count: 1, modifiers: mods, mode: pointer)
@@ -199,8 +216,10 @@ public func registerUIWaitMethods(_ d: Dispatcher) {
         let match = try cond.findQuery(wantExists ? "exists" : "gone")
         let minCount = cond.optInt("count") ?? 1   // N 個以上あれば「存在」とみなす (同じ文言が増えるのを待つ用)
         opts.maxNodes = 5000
+        var searchOpts = opts
+        searchOpts.maxDepth = SnapshotOptions().maxDepth   // maxDepth は返すツリーの深さ。検索は全深さで行う (浅い指定で一致 0 にならないように)
         while true {
-            let out = SnapshotBuilder.build(root: root, options: opts, match: match)
+            let out = SnapshotBuilder.build(root: root, options: searchOpts, match: match)
             let found = out.matches >= minCount   // 祖先に付く ref ではなく一致数で判定する
             if found == wantExists {
                 return snapshotResult(wantExists ? out : SnapshotBuilder.build(root: root, options: p.snapshotOptions()))
