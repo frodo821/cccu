@@ -35,7 +35,7 @@ export interface Backend {
   find(target: string, query: FindQuery, opts?: SnapshotOptions): Promise<SnapshotResult>;
   /** CSS セレクタ風の構造クエリ (desktop) */
   query?(target: string, selector: string, opts?: SnapshotOptions): Promise<SnapshotResult>;
-  waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number, scope?: BrowserScope): Promise<SnapshotResult>;
+  waitFor(target: string, cond: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number, scope?: BrowserScope, tree?: { maxDepth?: number; maxNodes?: number }): Promise<SnapshotResult>;
 
   /** foreground: 効かなかった操作を「一瞬前面化して実行し、元のアプリへ戻す」でやり直すための指定 (desktop のみ意味を持つ) */
   /** desktop: 画面座標をクリック (AX ツリーが使えないときのフォールバック) */

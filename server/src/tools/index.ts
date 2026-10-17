@@ -115,10 +115,10 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000"), textLimit: textLimitArg } },
-    ({ target, within, scope, exists, count, gone, stableMs, timeoutMs = 5000, textLimit }) => run(async () => {
+      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000"), textLimit: textLimitArg, maxDepth: z.number().int().optional().describe("Depth of the returned tree (desktop)"), maxNodes: z.number().int().optional() } },
+    ({ target, within, scope, exists, count, gone, stableMs, timeoutMs = 5000, textLimit, maxDepth, maxNodes }) => run(async () => {
       const cond = exists ? { exists: toQuery(exists), count } : gone ? { gone: toQuery(gone) } : { stable: stableMs ?? 500 };
-      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined, textLimit, scope));
+      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined, textLimit, scope, { maxDepth, maxNodes }));
     }));
 
   server.registerTool("cu_click",

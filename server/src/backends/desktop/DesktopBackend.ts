@@ -128,8 +128,8 @@ export class DesktopBackend implements Backend {
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within, opts.scope), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit, ...(await this.extraOptions(target, opts.scope)) });
   }
-  async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number, scope?: BrowserScope): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within, scope), condition, timeoutMs, textLimit, ...(await this.extraOptions(target, scope)) });
+  async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number, scope?: BrowserScope, tree: { maxDepth?: number; maxNodes?: number } = {}): Promise<SnapshotResult> {
+    return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within, scope), condition, timeoutMs, textLimit, ...tree, ...(await this.extraOptions(target, scope)) });
   }
   async query(target: string, selector: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     const h = await this.helper();
