@@ -123,7 +123,7 @@ public func registerUIMethods(_ d: Dispatcher) {
                     return snapshotResult(SnapshotBuilder.build(root: root, options: opts))
                 }
             }
-            throw HelperError(.timeout, "UI did not settle within \(Int(timeout * 1000))ms")
+            throw HelperError(.timeout, "UI did not settle within \(Int(timeout * 1000))ms", data: ["lastSnapshot": String(last.prefix(6000))])
         }
         let wantExists = cond.raw["exists"] != nil
         guard wantExists || cond.raw["gone"] != nil else { throw HelperError.invalidParams("condition needs exists, gone or stable") }
@@ -136,7 +136,12 @@ public func registerUIMethods(_ d: Dispatcher) {
             if found == wantExists {
                 return snapshotResult(wantExists ? out : SnapshotBuilder.build(root: root, options: p.snapshotOptions()))
             }
-            if Date() >= deadline { throw HelperError(.timeout, "condition not met within \(Int(timeout * 1000))ms") }
+            if Date() >= deadline {
+                // 何が見えていたかを添える (別途スナップショットを取らずに原因を判断できるように)。ref は登録しない
+                let last = SnapshotBuilder.build(root: root, options: p.snapshotOptions()).text
+                throw HelperError(.timeout, "condition not met within \(Int(timeout * 1000))ms (matches=\(out.matches))",
+                                  data: ["matches": out.matches, "lastSnapshot": String(last.prefix(6000))])
+            }
             Thread.sleep(forTimeInterval: 0.15)
         }
     }

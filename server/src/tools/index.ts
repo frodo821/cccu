@@ -13,13 +13,17 @@ export interface ToolContext {
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 const text = (s: string): ToolResult => ({ content: [{ type: "text", text: s }] });
 const fail = (e: unknown): ToolResult => {
-  const msg = e instanceof HelperError
-    ? `${e.kind}: ${e.message}${Object.keys(e.data).length ? "\n" + JSON.stringify(e.data) : ""}`
-    : String(e);
+  let msg = String(e);
+  if (e instanceof HelperError) {
+    // タイムアウト時にヘルパーが添える最後のスナップショットは、JSON ではなくそのまま読める形で出す
+    const { lastSnapshot, ...rest } = e.data as { lastSnapshot?: string };
+    msg = `${e.kind}: ${e.message}${Object.keys(rest).length ? "\n" + JSON.stringify(rest) : ""}`;
+    if (typeof lastSnapshot === "string") msg += `\nlast snapshot (no refs):\n${lastSnapshot}`;
+  }
   return { content: [{ type: "text", text: msg }], isError: true };
 };
 const snap = (r: SnapshotResult): ToolResult =>
-  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${r.truncated ? " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)" : ""}\n${r.text}`);
+  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${r.truncated ? (r.truncatedBy === "depth" ? " (subtrees cut at maxDepth: raise maxDepth or narrow the scope with within)" : " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)") : ""}\n${r.text}`);
 
 const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optional();
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
@@ -28,7 +32,8 @@ const findShape = { role: z.string().optional(), text: z.string().optional(), va
 const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
 const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
 const pointerArg = z.enum(["human", "warp"]).optional().describe("Desktop: how the cursor travels for a real click/scroll. Default human (Fitts's-law motion); warp jumps instantly");
-const withinArg = z.string().optional().describe('Limit to the subtree of this snapshot ref (e.g. "s3/e5"), not a target id. Browser apps are scoped to the page by default; to see tabs or the address bar use target "window:<pid>:<n>" instead');
+const withinArg = z.string().optional().describe('Limit to the subtree of this snapshot ref (e.g. "s3/e5"), not a target id. Browser apps are scoped to the page by default; to see tabs or the address bar use target "window:<pid>:<n>" or scope "app" instead');
+const scopeArg = z.enum(["page", "app"]).optional().describe('Desktop browsers only: "page" (default) limits to the web content; "app" shows the whole application (menu bar, windows, tab strip)');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
 export function registerTools(server: McpServer, ctx: ToolContext) {
@@ -81,20 +86,20 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_snapshot",
     { description: "Accessibility-tree snapshot of a target. Actionable elements carry [ref=eN]; pass them to other tools as \"<snapshot>/<ref>\".",
-      inputSchema: { target: targetArg, within: withinArg, maxDepth: z.number().int().optional(), maxNodes: z.number().int().optional().describe("Default 800"), interestingOnly: z.boolean().optional(), textLimit: textLimitArg } },
+      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, maxDepth: z.number().int().optional(), maxNodes: z.number().int().optional().describe("Default 800"), interestingOnly: z.boolean().optional(), textLimit: textLimitArg } },
     ({ target, within, ...opts }) => run(async () => snap(await byTarget(target).snapshot(target, { ...opts, within: within ? parseRef(within) : undefined }))));
 
   server.registerTool("cu_find",
     { description: "Find elements by role and/or text within a target; returns matches (with their contents) and ancestors. Cheaper than a full snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, ...findShape, exact: z.boolean().optional(), textLimit: textLimitArg } },
-    ({ target, within, textLimit, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined, textLimit }))));
+      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, ...findShape, exact: z.boolean().optional(), textLimit: textLimitArg } },
+    ({ target, within, scope, textLimit, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined, scope, textLimit }))));
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000"), textLimit: textLimitArg } },
-    ({ target, within, exists, count, gone, stableMs, timeoutMs = 5000, textLimit }) => run(async () => {
+      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, exists: z.object(findShape).optional(), count: z.number().int().optional().describe("With exists: wait until at least this many matches exist (e.g. the N-th feedback block)"), gone: z.object(findShape).optional(), stableMs: z.number().int().optional(), timeoutMs: z.number().int().optional().describe("Default 5000"), textLimit: textLimitArg } },
+    ({ target, within, scope, exists, count, gone, stableMs, timeoutMs = 5000, textLimit }) => run(async () => {
       const cond = exists ? { exists: toQuery(exists), count } : gone ? { gone: toQuery(gone) } : { stable: stableMs ?? 500 };
-      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined, textLimit));
+      return snap(await byTarget(target).waitFor(target, cond, timeoutMs, within ? parseRef(within) : undefined, textLimit, scope));
     }));
 
   server.registerTool("cu_click",

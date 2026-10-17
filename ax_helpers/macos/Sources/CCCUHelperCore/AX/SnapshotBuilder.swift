@@ -15,6 +15,7 @@ public struct SnapshotOutput {
     public let refs: [String: AXElement]
     public let truncated: Bool
     public var matches: Int = 0   // ui.find での一致数 (祖先の ref は含まない)
+    public var truncatedBy: String? = nil   // "nodes" (maxNodes 到達) か "depth" (maxDepth で子孫を省いた)
 }
 
 /// 走査で得た中間ノード
@@ -58,6 +59,7 @@ public enum SnapshotBuilder {
     static func build(root: AXElement, options: SnapshotOptions, match: ((Node) -> Bool)? = nil) -> SnapshotOutput {
         var count = 0
         var truncated = false
+        var depthCut = false   // maxDepth で切った (maxNodes ではなく)
 
         func walk(_ el: AXElement, depth: Int) -> Node? {
             if count >= options.maxNodes { truncated = true; return nil }
@@ -67,6 +69,8 @@ public enum SnapshotBuilder {
             count += 1
 
             let node = makeNode(el, role: role, options: options)
+            // 名前のない静的テキスト (アイコンフォントのグリフ、空文字列) は情報がないので出さない
+            if role == "text", node.title == nil, node.value == nil, !node.actionable { return nil }
 
             if depth < options.maxDepth && !leafRoles.contains(role) {
                 for child in el.children {
@@ -74,7 +78,7 @@ public enum SnapshotBuilder {
                     if count >= options.maxNodes { truncated = true; break }
                 }
             } else if depth >= options.maxDepth && !el.children.isEmpty {
-                truncated = true
+                truncated = true; depthCut = true
             }
             if role == "menubar" {   // メニューバーは項目名まで
                 for child in el.children {
@@ -85,14 +89,11 @@ public enum SnapshotBuilder {
         }
 
         guard let tree = walk(root, depth: 0) else {
-            return SnapshotOutput(text: "", refs: [:], truncated: truncated)
+            return SnapshotOutput(text: "", refs: [:], truncated: truncated, truncatedBy: truncated ? (depthCut ? "depth" : "nodes") : nil)
         }
         // 一致判定はツリーが組み上がってから (子テキストを連結したブロック文字列にも一致させるため)
         var matchCount = 0
-        if let match = match {
-            func mark(_ n: Node) { n.matched = match(n); if n.matched { matchCount += 1 }; n.children.forEach(mark) }
-            mark(tree)
-        }
+        if let match = match { matchCount = markMatches(tree, match) }
         let forest: [Node]
         if let _ = match {
             forest = prune(tree).map { [$0] } ?? []
@@ -105,7 +106,24 @@ public enum SnapshotBuilder {
         var lines: [String] = []
         var refCounter = 0
         for n in forest { render(n, indent: 0, lines: &lines, refs: &refs, counter: &refCounter, options: options) }
-        return SnapshotOutput(text: lines.joined(separator: "\n"), refs: refs, truncated: truncated, matches: matchCount)
+        return SnapshotOutput(text: lines.joined(separator: "\n"), refs: refs, truncated: truncated, matches: matchCount,
+                              truncatedBy: truncated ? (depthCut && count < options.maxNodes ? "depth" : "nodes") : nil)
+    }
+
+    /// 一致ノードに印を付け、一致数を返す。一致数は末端優先: 子孫にも一致があれば親 (ブロック文字列で一致した group など) は数えない。
+    /// count 待ちで同じ文言が 2 倍に数えられないようにするため
+    @discardableResult
+    static func markMatches(_ tree: Node, _ match: (Node) -> Bool) -> Int {
+        var total = 0
+        @discardableResult func mark(_ n: Node) -> Bool {
+            n.matched = match(n)
+            var childHit = false
+            for c in n.children { if mark(c) { childHit = true } }
+            if n.matched && !childHit { total += 1 }
+            return n.matched || childHit
+        }
+        mark(tree)
+        return total
     }
 
     static func makeNode(_ el: AXElement, role: String, options: SnapshotOptions) -> Node {
@@ -122,8 +140,8 @@ public enum SnapshotBuilder {
             if let n = v as? Double { states.append(n == 0 ? "unchecked" : "checked") }
             else if let b = v as? Bool { states.append(b ? "checked" : "unchecked") }
         case "text":
-            // 静的テキストは title がなければ value を title 扱いにする
-            if title == nil, let s = v as? String { title = s }
+            // 静的テキストは title がなければ value を title 扱いにする (アイコングリフだけなら無名のまま)
+            if title == nil, let s = v as? String { let c = cleanName(s); title = c.isEmpty ? nil : c }
         default:
             if let s = v as? String { if !s.isEmpty { value = s } }
             else if let n = v as? Double { value = n == n.rounded() ? Int(n) : n }

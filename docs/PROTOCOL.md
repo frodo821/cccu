@@ -168,12 +168,14 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - 状態フラグ: `[focused] [disabled] [selected] [checked] [expanded] [collapsed]`
 - 値は `: "…"` を末尾に。80 文字で切り詰め、末尾に `…`
 - `interestingOnly=true` (既定) では title も value も ref もない `group`/`generic` は子を親に繰り上げる
-- `truncated=true` は `maxNodes` / `maxDepth` で打ち切ったことを示す
+- `truncated=true` は `maxNodes` / `maxDepth` で打ち切ったことを示す。`truncatedBy` が `"nodes"` か `"depth"` のどちらで切れたかを示す
+- 名前のない静的テキスト (空文字列、アイコングリフだけ) はツリーに出さない
+- `matches` は末端優先で数える: 子孫にも一致があれば親 (ブロック文字列で一致した group など) は数えない
 
 ## 7. ref のライフサイクル
 
 - `ui.snapshot` / `ui.find` / `ui.waitFor` は新しい snapshot id を発行する (`s1` から連番、プロセス内で一意)
-- ヘルパーは直近 40 スナップショットの `ref → 要素ハンドル` 表を保持し、それ以前は破棄する (`ui.find` / `ui.waitFor` も 1 回ごとにスナップショットを作るため、8 では数回の操作で古くなった)
+- ヘルパーは直近 200 スナップショットの `ref → 要素ハンドル` 表を保持し、それ以前は破棄する (`ui.find` / `ui.waitFor` も 1 回ごとにスナップショットを作るため、40 では長い作業の途中で古くなった)
 - ref 使用時、要素の生存確認に失敗したら `STALE_REF`
 - スナップショットを跨いだ同一性は保証しない
 
@@ -183,6 +185,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.7: `ui.waitFor` のタイムアウトに `lastSnapshot` (最後に見えていたツリー、ref なし) と `matches` を添える。`input.scroll` は画面外の要素を基点にすると可視の祖先を使い `anchor` を返す。`truncatedBy`。ref 表を 200 に拡大。一致数を末端優先に。無名の静的テキストを省く。ヒットテストで対象の frame に収まる要素は対象の一部とみなす (ブラウザ UI の無名 group による `OBSTRUCTED` 誤検知の回避)。スクロール後の frame 安定判定を連続 2 回に
 - 1.6: 実クリック前のヒットテストと `OBSTRUCTED` エラー、`ui.click` の `force`
 - 1.5: フィッツの法則によるポインタ移動とトラックパッド風スクロール、`pointer` パラメータ
 - 1.4: 前面化ポリシー (既定で背面操作)、`foreground` パラメータ、`app.launch`、操作系メソッドが `method` を返す

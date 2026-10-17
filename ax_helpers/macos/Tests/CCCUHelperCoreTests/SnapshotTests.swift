@@ -23,6 +23,28 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(SnapshotBuilder.cleanName("  Save\u{00A0}"), "Save")
     }
 
+    func testMatchCountPrefersLeaves() {
+        let el = AXElement.systemWide
+        func node(_ role: String, _ title: String?, _ children: [Node] = []) -> Node {
+            let n = Node(element: el, role: role, title: title, value: nil, states: [], actionable: false)
+            n.children = children
+            return n
+        }
+        // 正解フィードバックが group > text で入っている形。group は blockText で、text は title で一致する
+        let tree = node("webarea", nil, [
+            node("group", nil, [node("text", "正解は"), node("text", " May I")]),
+            node("group", nil, [node("text", "正解は"), node("text", " Could you")]),
+            node("text", "正解は"),
+        ])
+        let q: (Node) -> Bool = { ($0.title ?? "").contains("正解は") || (!$0.children.isEmpty && $0.blockText.contains("正解は")) }
+        XCTAssertEqual(SnapshotBuilder.markMatches(tree, q), 3)
+        XCTAssertTrue(tree.children[0].matched, "親にも印は付く (ref を取れるように)")
+        XCTAssertTrue(tree.children[0].children[0].matched)
+        // 子に一致がなく親だけ一致するときは親を数える
+        let only = node("group", "正解は", [node("text", "x")])
+        XCTAssertEqual(SnapshotBuilder.markMatches(only, q), 1)
+    }
+
     func testKeyCodes() {
         XCTAssertEqual(KeyCodes.code(for: "Enter"), 36)
         XCTAssertEqual(KeyCodes.code(for: "a"), 0)

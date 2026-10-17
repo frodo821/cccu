@@ -123,6 +123,10 @@ extension AXElement {
         for _ in 0..<maxDepth { guard let c = cur?.element(kAXParentAttribute) else { break }; if CFEqual(c.raw, raw) { return true }; cur = c }
         cur = self
         for _ in 0..<maxDepth { guard let c = cur?.element(kAXParentAttribute) else { break }; if CFEqual(c.raw, other.raw) { return true }; cur = c }
+        // ブラウザ UI (タブ、ツールバー) ではヒットテストが親子関係の辿れない無名の group を返すことがある。
+        // 相手の frame がこの要素の frame に収まっていれば、自分の一部 (装飾や内側のコンテナ) とみなす。モーダルのスクリムは要素より大きいので誤判定しない
+        if let f = frame, let of = other.frame, f.width > 2, f.height > 2, of.width > 0, of.height > 0,
+           f.insetBy(dx: -2, dy: -2).contains(of) { return true }
         return false
     }
     /// 最寄りのダイアログ/シート (モーダル) の要素
@@ -156,15 +160,34 @@ extension AXElement {
         if !usable(f), actionNames().contains("AXScrollToVisible") {
             try? perform("AXScrollToVisible")
             // スムーズスクロールが終わるまで待つ (frame が実寸になり、位置が安定するまで)
+            // 連続する 2 回の読み取りで位置が変わらなくなるまで待つ (1 回だけだとスムーズスクロールの途中で止まることがある)
             var last = f
-            for _ in 0..<15 {
+            var stable = 0
+            for _ in 0..<20 {
                 spin(0.08)
                 guard let now = frame else { break }
-                if usable(now), now.origin == last.origin { f = now; break }
+                if usable(now), now.origin == last.origin { stable += 1; if stable >= 2 { f = now; break } }
+                else { stable = 0 }
                 last = now; f = now
             }
         }
         return CGPoint(x: f.midX, y: f.midY)
+    }
+
+    /// スクロールの基点として使える座標。要素自身が可視領域外 (1x1 の仮 frame やウィンドウ外) なら、frame が使える祖先 (スクロール領域など) の中心を使う。
+    /// 戻り値は (座標, 代わりに使った祖先のロール or nil)
+    func scrollAnchor() -> (CGPoint, String?)? {
+        let visible = window?.frame?.insetBy(dx: 2, dy: 2)
+        func usable(_ r: CGRect) -> Bool { r.width > 2 && r.height > 2 && (visible.map { $0.contains(CGPoint(x: r.midX, y: r.midY)) } ?? true) }
+        if let f = frame, usable(f) { return (CGPoint(x: f.midX, y: f.midY), nil) }
+        var cur: AXElement? = element(kAXParentAttribute)
+        for _ in 0..<30 {
+            guard let c = cur else { break }
+            if let f = c.frame, usable(f) { return (CGPoint(x: f.midX, y: f.midY), c.role.map { SnapshotBuilder.normalizeRole($0, subrole: c.subrole) } ?? "unknown") }
+            if c.role == kAXWindowRole { break }
+            cur = c.element(kAXParentAttribute)
+        }
+        return center.map { ($0, nil) }
     }
     var isMainWindow: Bool { bool(kAXMainAttribute) ?? false }
     var windowNumber: Int {
@@ -262,5 +285,7 @@ extension Params {
 
 func snapshotResult(_ out: SnapshotOutput) -> JSONObject {
     let id = RefTable.shared.register(out.refs)
-    return ["snapshot": id, "text": out.text, "refCount": out.refs.count, "truncated": out.truncated, "matches": out.matches]
+    var r: JSONObject = ["snapshot": id, "text": out.text, "refCount": out.refs.count, "truncated": out.truncated, "matches": out.matches]
+    if let by = out.truncatedBy { r["truncatedBy"] = by }
+    return r
 }

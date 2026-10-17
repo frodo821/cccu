@@ -81,14 +81,18 @@ public func registerInputMethods(_ d: Dispatcher) {
         try Trust.require()
         let dx = try p.int("dx"), dy = try p.int("dy")
         if let el = try p.optRef() {
-            guard let c = el.center else { throw HelperError(.unsupported, "element has no frame") }
+            // 画面外の要素を基点にすると何も起きないので、可視の祖先 (スクロール領域) に置き換える
+            guard let (c, via) = el.scrollAnchor() else { throw HelperError(.unsupported, "element has no frame") }
+            var result: JSONObject = [:]
+            if let v = via { result["anchor"] = v }
             if directInput, !wantsForeground(p.optBool("foreground") ?? false) {
                 Input.scroll(at: c, dx: dx, dy: dy, pid: el.pid)   // 対象プロセスへ直接 (前面化しない)
-                return ["method": "pid"] as JSONObject
+                result["method"] = "pid"; return result
             }
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             withForeground(el.pid, window: el.window) { Input.scroll(at: c, dx: dx, dy: dy, mode: pointer) }
-            return ["method": activationPolicy == .foreground ? "hid" : "hid+restore"] as JSONObject
+            result["method"] = activationPolicy == .foreground ? "hid" : "hid+restore"
+            return result
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
         Input.scroll(at: pt, dx: dx, dy: dy, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode)

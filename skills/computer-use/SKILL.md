@@ -13,7 +13,7 @@ Workflow (always in this order):
 
 Browser notes
 - Two ways to work with Chrome. Check `cu_targets` first: its first line says whether a DevTools (CDP) Chrome is connected.
-  - The user's normal Chrome shows up as an app (`app:<pid>`, bundle com.google.Chrome). Open your own tab first (`cu_key target=com.google.Chrome key=t modifiers=[cmd]`) instead of navigating the tab the user is looking at. Drive it through the accessibility tree: `cu_find target=app:<pid> role=webarea` gives the page root; then `cu_snapshot within=<that ref>` to skip toolbars and extensions. To open a URL, `cu_find role=textfield text=アドレス` (the address bar; its name follows the system language) and `cu_type` into it with `clear: true, submit: true`. New tab: `cu_key key=t modifiers=[cmd]`. Logins are the user's own, so be careful with what you click.
+  - The user's normal Chrome shows up as an app (`app:<pid>`, bundle com.google.Chrome). Open your own tab first (`cu_key target=com.google.Chrome key=t modifiers=[cmd]`) instead of navigating the tab the user is looking at. Drive it through the accessibility tree: snapshots of a browser app are scoped to the page automatically; pass `scope: "app"` to `cu_snapshot` / `cu_find` / `cu_wait` when you need the tab strip, toolbar or menu bar (or target the window, `window:<pid>:<n>`). To open a URL, `cu_find role=textfield text=アドレス` (the address bar; its name follows the system language) and `cu_type` into it with `clear: true, submit: true`. New tab: `cu_key target=com.google.Chrome key=t modifiers=[cmd]`; close your tab with `key=w` the same way when done. Logins are the user's own, so be careful with what you click.
   - A CDP Chrome (`tab:<id>` targets) gives faster snapshots, `cu_navigate`, dialogs, and console events, but always runs in a separate profile without the user's logins. `cu_browser launch` starts one; `cu_navigate` to a new tab does so automatically. Do not tell the user to restart their Chrome with a debugging port: Chrome 136+ ignores it on the default profile.
 - CDP refs look like `b2/e5`. They die on navigation: after `cu_navigate` or a click that loads a page, take a new snapshot.
 - `cu_set_value` handles selects (by option value or label), checkboxes and inputs with proper input/change events. `cu_key` supports cmd+A/C/V/X/Z in text fields.
@@ -22,7 +22,9 @@ Browser notes
 Reading pages
 - Long text is cut at 80 characters. Pass `textLimit` (for example 400) to `cu_snapshot` / `cu_find` when you need to read a passage or an explanation.
 - Unnamed controls show `[at x,y wxh]` (screen coordinates). Take `cu_screenshot` of the window, map those coordinates onto the image (the screenshot result tells you the captured area and scale) and decide what the control does from its icon.
-- Clicking scrolls off-screen elements into view automatically, including elements inside scrollable panels. If a click still reports success but nothing changed, re-find the element and check its position with `cu_attributes` (`AXFrame`).
+- Clicking scrolls off-screen elements into view automatically, including elements inside scrollable panels. If a click still reports success but nothing changed, click the same ref again (a smooth scroll that was still running can swallow the press), then verify.
+- `cu_scroll` with a ref that is off-screen scrolls at its nearest visible ancestor instead (the result says so). Prefer a ref that is visible, such as the page or a visible heading.
+- When `cu_wait` times out, the error includes the last tree it saw (without refs), so you can usually tell why without another snapshot.
 - A real click fails with `OBSTRUCTED` when the point is covered by something else, typically a modal dialog or its backdrop; the error names the covering element and the dialog it belongs to. Snapshot again and act on the dialog (its buttons, or the dialog element itself when "click anywhere to continue"). Use `force: true` only when you know the cover is harmless.
 
 Tips
@@ -32,7 +34,7 @@ Tips
 - `[offscreen]` on a control means it is outside the viewport; clicking it scrolls it into view first.
 - Roles are lower-case AX roles without the prefix: `button`, `textfield`, `textarea`, `checkbox`, `popupbutton`, `menuitem`, `sheet`, `window`.
 - `cu_type` with a ref focuses the element and inserts text at the caret through the accessibility API. `clear: true` replaces the content, `submit: true` presses Enter afterwards.
-- Menu shortcuts: `cu_key` with `target` set, e.g. `key: "n", modifiers: ["cmd"]` for a new document. The app is brought to the front first.
+- Menu shortcuts: `cu_key` with `target` set, e.g. `key: "n", modifiers: ["cmd"]` for a new document. Shortcuts run through the app's menu in the background when possible; otherwise the app is brought to the front briefly. Without `target` the key goes to whatever app is in front, so always pass one.
 - Checkboxes and sliders: `cu_set_value` writes the value directly. `cu_attributes` shows raw attributes and available actions when something does not behave.
 - Sheets and dialogs appear as `sheet` children of the window; wait for them with `cu_wait exists: {role: "sheet"}`.
 

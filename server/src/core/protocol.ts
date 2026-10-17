@@ -44,7 +44,7 @@ export interface WindowInfo {
   pid: number; windowNumber: number; title: string; frame: Rect; focused: boolean; minimized: boolean;
 }
 export interface SnapshotResult {
-  snapshot: string; text: string; refCount: number; truncated: boolean;
+  snapshot: string; text: string; refCount: number; truncated: boolean; truncatedBy?: "nodes" | "depth";
   matches?: number;   // find / waitFor: 一致数 (祖先の ref は含まない)
 }
 
@@ -77,7 +77,7 @@ export interface Methods {
   };
   "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };
   "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string } };
-  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean; pointer?: "human" | "warp" }; result: { method: string } };
+  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean; pointer?: "human" | "warp" }; result: { method: string; anchor?: string } };
   "input.mouse": {
     params: { point: Point; action: "move" | "down" | "up" | "drag"; to?: Point; button?: "left" | "right" };
     result: Record<string, never>;

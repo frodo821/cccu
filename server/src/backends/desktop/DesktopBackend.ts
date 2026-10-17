@@ -1,4 +1,4 @@
-import type { Backend, SnapshotOptions, TargetInfo, UIEvent, WaitCondition } from "../../core/backend.js";
+import type { Backend, BrowserScope, SnapshotOptions, TargetInfo, UIEvent, WaitCondition } from "../../core/backend.js";
 import { HelperError, type AXEvent, type FindQuery, type Modifier, type Ref, type SnapshotResult } from "../../core/protocol.js";
 import { parseTarget, scopeOf, type ParsedTarget } from "../../core/targets.js";
 import { HelperClient } from "./HelperClient.js";
@@ -41,12 +41,12 @@ export class DesktopBackend implements Backend {
     }
     return t;
   }
-  private async scope(target: string, within?: Ref) {
+  private async scope(target: string, within?: Ref, scope?: BrowserScope) {
     if (within) return { ref: within };
     const t = await this.resolveTarget(target);
     // ブラウザは既定でページ (webarea) に絞る。タブバーや拡張機能、メニューバーで ref が埋まるのを避ける。
-    // ブラウザ UI が必要なときは within にウィンドウの ref を渡す
-    if (t.kind === "app" && (await this.isBrowser(t.pid))) {
+    // ブラウザ UI が必要なときは scope: "app" か、within にウィンドウの ref を渡す
+    if (scope !== "app" && t.kind === "app" && (await this.isBrowser(t.pid))) {
       const page = await this.focusedWebArea(t.pid);
       if (page) return { ref: page };
     }
@@ -105,11 +105,11 @@ export class DesktopBackend implements Backend {
   }
 
   async snapshot(target: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    const { within, ...rest } = opts;
-    return this.withPermissionRetry(async () => (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within), ...rest }));
+    const { within, scope, ...rest } = opts;
+    return this.withPermissionRetry(async () => (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within, scope), ...rest }));
   }
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit });
+    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within, opts.scope), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit });
   }
   async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs, textLimit });
@@ -122,12 +122,14 @@ export class DesktopBackend implements Backend {
   }
   async key(target: string | undefined, key: string, modifiers?: Modifier[], opts: { foreground?: boolean } = {}): Promise<string> {
     const h = await this.helper();
-    const pid = target ? (await this.scope(target) as { pid: number }).pid : undefined;
+    // scope() はブラウザだと webarea の ref を返し pid を持たないので、ターゲット解決から直接 pid を取る
+    const pid = target ? (await this.resolveTarget(target) as { pid?: number }).pid : undefined;
     const r = await h.call("input.key", { key, modifiers, pid, ...opts });
     return r.item ? `${r.method} "${r.item}"` : r.method;
   }
   async scroll(ref: Ref, dx: number, dy: number, opts: { foreground?: boolean; pointer?: "human" | "warp" } = {}): Promise<string> {
-    return (await (await this.helper()).call("input.scroll", { ref, dx, dy, ...opts })).method;
+    const r = await (await this.helper()).call("input.scroll", { ref, dx, dy, ...opts });
+    return r.anchor ? `${r.method} (element is off-screen; scrolled at its ${r.anchor})` : r.method;
   }
   async setValue(ref: Ref, value: string | number | boolean): Promise<void> {
     await (await this.helper()).call("ui.setAttribute", { ref, name: "AXValue", value });
