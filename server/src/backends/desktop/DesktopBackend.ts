@@ -120,18 +120,51 @@ export class DesktopBackend implements Backend {
   async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs, textLimit });
   }
+  /** 操作結果の method 文字列に、ヘルパーの警告 (ユーザー入力の遮断・重なり、セッション終了) を添える */
+  private static withWarning(method: string, r: { warning?: string }): string {
+    return r.warning ? `${method} — WARNING: ${r.warning}` : method;
+  }
   async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean }): Promise<string> {
-    return (await (await this.helper()).call("ui.click", { ref, ...opts })).method;
+    const r = await (await this.helper()).call("ui.click", { ref, ...opts });
+    return DesktopBackend.withWarning(r.method, r);
   }
   async type(ref: Ref | undefined, text: string, opts: { clear?: boolean; submit?: boolean; foreground?: boolean }): Promise<string> {
-    return (await (await this.helper()).call("input.type", { ref, text, ...opts })).method;
+    const r = await (await this.helper()).call("input.type", { ref, text, ...opts });
+    return DesktopBackend.withWarning(r.method, r);
+  }
+  async inputSession(action: "begin" | "extend" | "end" | "status", target?: string, opts: { blockInput?: boolean; maxSeconds?: number } = {}): Promise<string> {
+    const h = await this.helper();
+    if (!h.has("session.begin")) throw new HelperError("UNSUPPORTED", "helper does not support sessions (rebuild ax_helpers/macos)");
+    switch (action) {
+      case "begin": {
+        if (!target) throw new HelperError("INVALID_PARAMS", "begin needs a target (app:<pid> or bundle id)");
+        if (opts.maxSeconds === undefined) throw new HelperError("INVALID_PARAMS", "begin needs maxSeconds: declare how long the session may last (1..3600)");
+        const t = await this.resolveTarget(target);
+        if (t.kind !== "app" && t.kind !== "window") throw new HelperError("UNSUPPORTED", `cannot start a session on ${target}`);
+        const r = await h.call("session.begin", { pid: t.pid, blockInput: opts.blockInput ?? true, maxSeconds: opts.maxSeconds });
+        return `session started on pid ${r.pid}: app kept in front, user input ${r.blocking ? "blocked" : "not blocked"}, ends automatically after ${r.maxSeconds}s or when the user presses Escape three times. Call cu_session end when done.`;
+      }
+      case "extend": {
+        if (opts.maxSeconds === undefined) throw new HelperError("INVALID_PARAMS", "extend needs maxSeconds");
+        const r = await h.call("session.extend", { maxSeconds: opts.maxSeconds });
+        return `session extended: ${r.remainingSeconds}s remaining`;
+      }
+      case "end": {
+        const r = await h.call("session.end", {});
+        return DesktopBackend.withWarning(`session ended after ${r.seconds ?? 0}s; ${r.blockedInputs ?? 0} user input event(s) were blocked; focus returned to the previous app`, r);
+      }
+      case "status": {
+        const r = await h.call("session.status", {});
+        return r.active ? `session active on pid ${r.pid}, input ${r.blocking ? "blocked" : "not blocked"}, ${r.remainingSeconds}s remaining` : "no active session";
+      }
+    }
   }
   async key(target: string | undefined, key: string, modifiers?: Modifier[], opts: { foreground?: boolean } = {}): Promise<string> {
     const h = await this.helper();
     // scope() はブラウザだと webarea の ref を返し pid を持たないので、ターゲット解決から直接 pid を取る
     const pid = target ? (await this.resolveTarget(target) as { pid?: number }).pid : undefined;
     const r = await h.call("input.key", { key, modifiers, pid, ...opts });
-    return r.item ? `${r.method} "${r.item}"` : r.method;
+    return DesktopBackend.withWarning(r.item ? `${r.method} "${r.item}"` : r.method, r);
   }
   /** ユーザーの Chrome など AX で操作するブラウザで URL を開く: cmd+L でアドレスバーへ、フォーカス要素に URL を打って Enter */
   async navigate(target: string | undefined, url: string): Promise<string> {
@@ -150,7 +183,7 @@ export class DesktopBackend implements Backend {
   }
   async scroll(ref: Ref, dx: number, dy: number, opts: { foreground?: boolean; pointer?: "human" | "warp" } = {}): Promise<string> {
     const r = await (await this.helper()).call("input.scroll", { ref, dx, dy, ...opts });
-    return r.anchor ? `${r.method} (element is off-screen; scrolled at its ${r.anchor})` : r.method;
+    return DesktopBackend.withWarning(r.anchor ? `${r.method} (element is off-screen; scrolled at its ${r.anchor})` : r.method, r);
   }
   async setValue(ref: Ref, value: string | number | boolean): Promise<void> {
     await (await this.helper()).call("ui.setAttribute", { ref, name: "AXValue", value });

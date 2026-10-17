@@ -26,6 +26,8 @@ export interface Backend {
   listTargets(): Promise<TargetInfo[]>;
   /** URL を開く / back / forward / close。desktop ではブラウザアプリのアドレスバー経由 */
   navigate?(target: string | undefined, url: string): Promise<string>;
+  /** 操作セッション: 対象アプリを前面に保ちユーザー入力を遮断する (desktop) */
+  inputSession?(action: "begin" | "extend" | "end" | "status", target?: string, opts?: { blockInput?: boolean; maxSeconds?: number }): Promise<string>;
   activate(target: string): Promise<string>;
   snapshot(target: string, opts?: SnapshotOptions): Promise<SnapshotResult>;
   find(target: string, query: FindQuery, opts?: SnapshotOptions): Promise<SnapshotResult>;

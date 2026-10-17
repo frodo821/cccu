@@ -45,6 +45,18 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(SnapshotBuilder.markMatches(only, q), 1)
     }
 
+    func testSessionIsInactiveByDefaultAndRequiresMaxSeconds() throws {
+        XCTAssertFalse(Session.isActive)
+        XCTAssertEqual(Session.status["active"] as? Bool, false)
+        let d = Dispatcher()
+        registerSessionMethods(d)
+        XCTAssertTrue(d.capabilities.contains("session.begin") && d.capabilities.contains("session.end"))
+        // maxSeconds を宣言しない begin は受け付けない (閉じ込め防止)
+        let r = d.handle(Request(json: ["jsonrpc": "2.0", "id": 1, "method": "session.begin", "params": ["pid": Int(ProcessInfo.processInfo.processIdentifier)]])!)
+        if case .error(_, let e) = r { XCTAssertTrue([.invalidParams, .notTrusted].contains(e.kind)) } else { XCTFail("expected an error") }
+        XCTAssertEqual(UserActivity.mode, .block)
+    }
+
     func testKeyCodes() {
         XCTAssertEqual(KeyCodes.code(for: "Enter"), 36)
         XCTAssertEqual(KeyCodes.code(for: "a"), 0)

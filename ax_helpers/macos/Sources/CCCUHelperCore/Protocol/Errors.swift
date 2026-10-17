@@ -10,6 +10,7 @@ public struct HelperError: Error {
         case axError = "AX_ERROR"
         case timeout = "TIMEOUT"
         case obstructed = "OBSTRUCTED"
+        case busy = "BUSY"
         case invalidParams = "INVALID_PARAMS"
         case methodNotFound = "METHOD_NOT_FOUND"
         case parseError = "PARSE_ERROR"
@@ -24,6 +25,7 @@ public struct HelperError: Error {
             case .axError: return -32005
             case .timeout: return -32006
             case .obstructed: return -32007
+            case .busy: return -32008
             case .invalidParams: return -32602
             case .methodNotFound: return -32601
             case .parseError: return -32700

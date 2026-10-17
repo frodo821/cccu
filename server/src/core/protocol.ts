@@ -12,7 +12,7 @@ export type FindQuery = { role?: string; title?: string; value?: string; exact?:
 
 export type ErrorKind =
   | "NOT_TRUSTED" | "STALE_REF" | "NOT_FOUND" | "UNSUPPORTED" | "AX_ERROR"
-  | "TIMEOUT" | "OBSTRUCTED" | "INVALID_PARAMS" | "METHOD_NOT_FOUND" | "PARSE_ERROR" | "INTERNAL";
+  | "TIMEOUT" | "OBSTRUCTED" | "BUSY" | "INVALID_PARAMS" | "METHOD_NOT_FOUND" | "PARSE_ERROR" | "INTERNAL";
 
 export class HelperError extends Error {
   constructor(
@@ -25,6 +25,7 @@ export class HelperError extends Error {
   }
 }
 
+export interface SessionStatus { active: boolean; pid?: number; blocking?: boolean; remainingSeconds?: number }
 export interface HelloResult {
   protocolVersion: string;
   helperVersion: string;
@@ -68,16 +69,20 @@ export interface Methods {
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
   "ui.click": {
     params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean };
-    result: { method: string };
+    result: { method: string; warning?: string };
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
   "ui.waitFor": {
     params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };
-  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string } };
-  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean; pointer?: "human" | "warp" }; result: { method: string; anchor?: string } };
+  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string; warning?: string } };
+  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string; warning?: string } };
+  "session.begin": { params: { pid?: number; bundleId?: string; blockInput?: boolean; maxSeconds: number }; result: { pid: number; previousPid?: number; blocking: boolean; maxSeconds: number; warning?: string } };
+  "session.extend": { params: { maxSeconds: number }; result: SessionStatus };
+  "session.end": { params: Record<string, never>; result: { active: false; blockedInputs?: number; seconds?: number; warning?: string } };
+  "session.status": { params: Record<string, never>; result: SessionStatus };
+  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean; pointer?: "human" | "warp" }; result: { method: string; anchor?: string; warning?: string } };
   "input.mouse": {
     params: { point: Point; action: "move" | "down" | "up" | "drag"; to?: Point; button?: "left" | "right" };
     result: Record<string, never>;

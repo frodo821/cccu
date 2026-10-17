@@ -3,7 +3,8 @@ import Foundation
 
 /// CGEvent によるキーボード・マウス入力。AX で操作できない場合の逃げ道。
 public enum Input {
-    static let source = CGEventSource(stateID: .hidSystemState)
+    // HID ではなくセッション状態のソースで送る: `.hidSystemState` の最終入力時刻をユーザーの実入力の検出に使うため (UserActivity)
+    static let source = CGEventSource(stateID: .combinedSessionState)
     static let stepDelay: TimeInterval = 0.02
 
     /// イベントの送り方:

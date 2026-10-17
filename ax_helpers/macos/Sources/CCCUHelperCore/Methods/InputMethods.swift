@@ -61,7 +61,7 @@ public func registerInputMethods(_ d: Dispatcher) {
         let mods = p.modifiers()
         let foreground = wantsForeground(p.optBool("foreground") ?? false)
         guard let pid = p.optInt("pid").map({ pid_t($0) }) else {
-            try Input.pressKey(key, modifiers: mods)          // 対象指定なし: 最前面のアプリへ
+            try UserActivity.guarded { try Input.pressKey(key, modifiers: mods) }          // 対象指定なし: 最前面のアプリへ
             return ["method": "hid"] as JSONObject
         }
         if !foreground {
@@ -96,18 +96,18 @@ public func registerInputMethods(_ d: Dispatcher) {
                 result["method"] = "pid"; return result
             }
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
-            withForeground(el.pid, window: el.window) { Input.scroll(at: c, dx: dx, dy: dy, mode: pointer) }
+            try withForeground(el.pid, window: el.window) { Input.scroll(at: c, dx: dx, dy: dy, mode: pointer) }
             result["method"] = activationPolicy == .foreground ? "hid" : "hid+restore"
             return result
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
-        Input.scroll(at: pt, dx: dx, dy: dy, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode)
+        try UserActivity.guarded { Input.scroll(at: pt, dx: dx, dy: dy, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode) }
         return ["method": "hid"] as JSONObject
     }
 
     d.register("input.mouse") { p in
         try Trust.require()
-        try Input.mouse(action: try p.string("action"), at: try p.point("point"), to: try p.optPoint("to"), button: p.optString("button"))
+        try UserActivity.guarded { try Input.mouse(action: try p.string("action"), at: try p.point("point"), to: try p.optPoint("to"), button: p.optString("button")) }
         return [:] as JSONObject
     }
 }

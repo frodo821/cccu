@@ -25,7 +25,7 @@ public var activationPolicy: ActivationPolicy =
 public var directInput = ProcessInfo.processInfo.environment["CCCU_DIRECT_INPUT"] == "1"
 
 /// 操作を実行する。foreground=true (呼び出しごとの指定) またはポリシーが background 以外なら前面化して行う
-func act<T>(_ pid: pid_t, window: AXElement? = nil, foreground: Bool, _ body: () throws -> T) rethrows -> T {
+func act<T>(_ pid: pid_t, window: AXElement? = nil, foreground: Bool, _ body: () throws -> T) throws -> T {
     if foreground || activationPolicy != .background { return try withForeground(pid, window: window, body) }
     return try body()
 }
@@ -39,28 +39,39 @@ func spin(_ seconds: TimeInterval) {
 }
 
 /// 前面化が必要な操作を実行する。background ポリシーでは、終わったら元の最前面アプリに戻す
-func withForeground<T>(_ pid: pid_t, window: AXElement? = nil, _ body: () throws -> T) rethrows -> T {
-    let previous = frontmostPid()
-    activate(pid)
-    if let w = window, !w.isMainWindow { try? w.perform(kAXRaiseAction) }
-    defer {
-        if activationPolicy != .foreground, let prev = previous, prev != pid {
-            spin(0.1)   // 送ったイベントが対象アプリで処理されるのを待ってから戻す
-            var attempts = 0
-            for _ in 0..<4 {
-                attempts += 1
-                activate(prev)
-                spin(0.08)
-                if frontmostPid() == prev { break }   // 奪い返されていたらやり直す
-            }
-            if ProcessInfo.processInfo.environment["CCCU_DEBUG"] != nil {
-                Transport.log("restore focus: previous=\(prev) target=\(pid) attempts=\(attempts) frontmost now=\(frontmostPid().map(String.init) ?? "nil")")
-            }
-        } else if ProcessInfo.processInfo.environment["CCCU_DEBUG"] != nil {
-            Transport.log("no restore: previous=\(previous.map(String.init) ?? "nil") target=\(pid) policy=\(activationPolicy.rawValue)")
-        }
+func withForeground<T>(_ pid: pid_t, window: AXElement? = nil, _ body: () throws -> T) throws -> T {
+    // セッション中 (session.begin) は対象を前面に保ったままにし、操作ごとの復帰はしない
+    if Session.isActive, Session.pid == pid {
+        if !isFrontmost(pid) { activate(pid) }
+        if let w = window, !w.isMainWindow { try? w.perform(kAXRaiseAction) }
+        return try body()
     }
-    return try body()
+    // 前面化と合成入力の間、ユーザーの実入力を遮断する (UserActivity)。ユーザーが打鍵中に前面を奪うと、その入力が対象アプリへ入る
+    return try UserActivity.guarded {
+        let previous = frontmostPid()
+        activate(pid)
+        if let w = window, !w.isMainWindow { try? w.perform(kAXRaiseAction) }
+        defer {
+            let now = frontmostPid()
+            if activationPolicy != .foreground, let prev = previous, prev != pid, now == nil || now == pid || now == prev {
+                // ユーザーが操作中に別のアプリへ切り替えていたら (now がどちらでもない) そのままにする
+                spin(0.1)   // 送ったイベントが対象アプリで処理されるのを待ってから戻す
+                var attempts = 0
+                for _ in 0..<4 {
+                    attempts += 1
+                    activate(prev)
+                    spin(0.08)
+                    if frontmostPid() == prev { break }   // 奪い返されていたらやり直す
+                }
+                if ProcessInfo.processInfo.environment["CCCU_DEBUG"] != nil {
+                    Transport.log("restore focus: previous=\(prev) target=\(pid) attempts=\(attempts) frontmost now=\(frontmostPid().map(String.init) ?? "nil")")
+                }
+            } else if ProcessInfo.processInfo.environment["CCCU_DEBUG"] != nil {
+                Transport.log("no restore: previous=\(previous.map(String.init) ?? "nil") target=\(pid) now=\(now.map(String.init) ?? "nil") policy=\(activationPolicy.rawValue)")
+            }
+        }
+        return try body()
+    }
 }
 
 /// アクティブなアプリ (キーボードフォーカスの持ち主) の pid。
@@ -171,7 +182,7 @@ extension AXElement {
         if !usable(f), f.width > 2, f.height > 2, let v = visible, let scroller = scrollAnchor()?.0 {
             let dy = f.maxY > v.maxY ? Int(f.maxY - v.maxY) + 60 : (f.minY < v.minY ? -(Int(v.minY - f.minY) + 60) : 0)
             if dy != 0 {
-                Input.scroll(at: scroller, dx: 0, dy: dy, mode: .warp)
+                try? UserActivity.guarded { Input.scroll(at: scroller, dx: 0, dy: dy, mode: .warp) }
                 f = settleFrame(from: f, usable: usable)
             }
         }

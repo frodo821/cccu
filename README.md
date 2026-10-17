@@ -142,6 +142,17 @@ or `foreground` (activate and stay, the old behaviour). `CCCU_DIRECT_INPUT=1` po
 process without activating it; that works in AppKit apps but Chrome silently ignores such events. `cu_activate`
 always brings the target to the front.
 
+### Sessions and your input
+
+If you type or move the mouse at the instant the agent presses a key or clicks, one of you gets the wrong result. Two
+things keep that from happening:
+
+- `cu_session begin` lets the agent declare "I am working in this app for up to N seconds". The app stays in front and
+  your keyboard and mouse are blocked until `cu_session end`, the declared time runs out, or you press Escape three times
+  quickly. The agent is told how many of your inputs were blocked.
+- Outside a session, each real click or key press blocks your input only for that instant (`CCCU_USER_GUARD=block`,
+  the default). `CCCU_USER_GUARD=wait` waits for your input to pause instead of blocking it, and `off` disables both.
+
 ## Pointer motion
 
 Real mouse actions move the cursor like a hand would instead of teleporting it: the travel time follows Fitts's law,

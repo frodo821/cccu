@@ -11,6 +11,11 @@ Workflow (always in this order):
 3. Act with `cu_click` / `cu_type` / `cu_key` / `cu_set_value` / `cu_action`, passing refs as `"<snapshot>/<ref>"` (e.g. `s3/e12`).
 4. After any action that changes the UI, take a new snapshot or use `cu_wait` (`exists` / `gone` / `stableMs`). Refs from an old snapshot fail with `STALE_REF`.
 
+Working alongside the user
+- For a run of actions on one app (filling a form, working through a page), bracket it with `cu_session begin target=<app> maxSeconds=<N>` and `cu_session end`. During the session the app stays in front and the user's keyboard and mouse are blocked, so their input cannot land in your target or move the cursor you are using. Declare a realistic maxSeconds (the session ends by itself after it; `cu_session extend` adds time) and always end the session when done, including after errors.
+- Without a session, each real click or key press briefly activates the app, blocks user input for that instant, and returns focus. If a result carries `WARNING: ... user input ...`, the user was typing or moving the mouse at that moment: verify the result before continuing. `BUSY` means the user is actively using the machine; wait a few seconds and retry.
+- The user can end a session at any time by pressing Escape three times; the next result tells you so.
+
 Browser notes
 - Two ways to work with Chrome. Check `cu_targets` first: its first line says whether a DevTools (CDP) Chrome is connected.
   - The user's normal Chrome shows up as an app (`app:<pid>`, bundle com.google.Chrome). Open your own tab first (`cu_key target=com.google.Chrome key=t modifiers=[cmd]`) instead of navigating the tab the user is looking at. Drive it through the accessibility tree: snapshots of a browser app are scoped to the page automatically; pass `scope: "app"` to `cu_snapshot` / `cu_find` / `cu_wait` when you need the tab strip, toolbar, address bar or menu bar; it leaves out the page content (or target the window, `window:<pid>:<n>`). To open a URL in your tab, `cu_navigate target=com.google.Chrome url=https://…` (it goes through the address bar of the current tab; `url: "back"`, `"forward"`, `"close"` and `"new"` also work). New tab: `cu_key target=com.google.Chrome key=t modifiers=[cmd]`; close your tab with `key=w` the same way when done. Logins are the user's own, so be careful with what you click.

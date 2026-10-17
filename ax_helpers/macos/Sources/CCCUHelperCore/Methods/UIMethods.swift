@@ -100,7 +100,7 @@ public func registerUIMethods(_ d: Dispatcher) {
             return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
-        try Input.click(at: pt, button: button, count: count, modifiers: mods, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode)
+        try UserActivity.guarded { try Input.click(at: pt, button: button, count: count, modifiers: mods, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode) }
         return ["method": "cg"] as JSONObject
     }
 

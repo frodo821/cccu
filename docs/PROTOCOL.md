@@ -55,6 +55,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | -32004 | `UNSUPPORTED`    | その要素がそのアクション/属性に非対応 |
 | -32005 | `AX_ERROR`       | OS API の失敗。`data.axError` に生の数値 |
 | -32006 | `TIMEOUT`        | `ui.waitFor` 期限切れ |
+| -32008 | `BUSY`           | ユーザーがキーボード・マウスを操作中で、合成入力を始められない (`CCCU_USER_GUARD=wait` のとき)。少し待って再試行 (v1.10) |
 | -32007 | `OBSTRUCTED`     | 実クリックの座標が対象以外の要素に遮られている (モーダルのスクリムなど)。`data.obstructedBy` に遮っている要素、`data.dialog` にそれを含むダイアログ。`force: true` で強行 (v1.6) |
 | -32602 | `INVALID_PARAMS` | 引数不正 (JSON-RPC 標準コード) |
 | -32601 | `METHOD_NOT_FOUND` | (JSON-RPC 標準) |
@@ -106,6 +107,10 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 |--------|--------|--------|
 | `input.type` | `{ref?: Ref, pid?: int, text: string, clear?: boolean, submit?: boolean, method?: "auto"\|"keys"\|"ax"}` | `{method: string}` — ref 省略時はフォーカス中の要素。`auto` は AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順。`submit` 時の既定は `keys` (AX で挿入した文字列は Chrome のアドレスバーなどで「ユーザー入力」扱いにならず Enter が効かないため)。打鍵が落ちたら AX で入れ直す (v1.3) |
 | `input.key` | `{key: string, modifiers?: Modifier[], pid?: int}` | `{}` — `key` は W3C `KeyboardEvent.key` 名。`pid` 指定時はそのアプリを前面にしてから送る |
+| `session.begin` | `{pid?: int, bundleId?: string, blockInput?: boolean, maxSeconds: int}` | `{pid, previousPid?, blocking, maxSeconds}` — 操作セッション開始: 対象を前面にし、終了まで保つ。`blockInput` (既定 true) でユーザーの実入力を遮断。`maxSeconds` (1–3600) は必須で、超えると自動終了。ユーザーが Escape を 1.5 秒以内に 3 回押しても終了し、次の応答に `warning` が付く (v1.10) |
+| `session.extend` | `{maxSeconds: int}` | `{active, pid, blocking, remainingSeconds}` — 期限を今から `maxSeconds` 後に延ばす (v1.10) |
+| `session.end` | `{}` | `{active: false, blockedInputs, seconds}` — 終了: 遮断を解き、開始前の最前面アプリへ戻す (ユーザーが自分で切り替えていればそのまま) (v1.10) |
+| `session.status` | `{}` | `{active, pid?, blocking?, remainingSeconds?}` (v1.10) |
 | `input.scroll` | `{ref?: Ref, point?: Point, dx: number, dy: number}` | `{}` |
 | `input.mouse` | `{point: Point, action: "move"\|"down"\|"up"\|"drag", to?: Point, button?: "left"\|"right"}` | `{}` |
 
@@ -144,6 +149,16 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - スクロールは pixel 単位の差分を減速プロファイルで分割し (最大 28 回、60 Hz)、トラックパッド風の phase (began / changed / ended) を付ける
 - 操作後のカーソルは操作した場所に残す (既定)。見ている人には視線の先にある方が自然で、戻す動作は瞬間移動になりユーザーの操作と奪い合う。`CCCU_POINTER_RESTORE=always` で元の位置へ戻す
 - `CCCU_POINTER=human|warp` (既定 human)。各メソッドは `pointer?: "human"|"warp"` で上書きできる。`sys.hello` の `pointer` で確認できる
+
+### ユーザー入力との競合 (v1.10)
+
+合成イベントは `.combinedSessionState` のソースで送り、ハードウェア入力 (`.hidSystemState`) と区別する。`CCCU_USER_GUARD`:
+
+- `block` (既定): 前面化と合成入力の間、セッションのイベントタップでハードウェア由来のキー・マウス・ホイールを捨てる。始める前にボタンや修飾キーが押されたままなら離されるまで待つ (最大 8 秒、超えたら `BUSY`)。捨てた入力があれば結果に `warning`
+- `wait`: 遮断せず、入力が 0.4 秒止まるまで待ってから始める。操作中に入力が重なれば `warning`
+- `off`: 何もしない
+
+操作系メソッドの結果に `warning: string` が付くことがある (ユーザー入力の遮断・重なり、セッションの終了)。クライアントは結果を確かめ直すべきである。
 
 ## 6. スナップショット記法
 
@@ -185,6 +200,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.10: 操作セッション `session.begin` / `session.extend` / `session.end` / `session.status` (対象アプリを前面に保ち、ユーザーの実入力を遮断。`maxSeconds` 必須、Escape 3 連打で終了)。ユーザー入力との競合対策 (`CCCU_USER_GUARD=block|wait|off`): 合成入力の間だけ実入力を遮断し、遮断・重なりがあれば結果に `warning`。`BUSY` エラー。合成イベントのソースを `.combinedSessionState` に
 - 1.9: `input.type` に `pid` (そのアプリのフォーカス要素へ入力)。可視判定をウィンドウではなく最寄りの webarea / scrollarea の表示範囲で行い、小さい要素は全体が入っていることを要求。`AXScrollToVisible` で端に寄っただけなら実スクロールで寄せ、1x1 の仮 frame のままなら frame のある祖先の中心を押す。文字サイズの違う断片は空白で区切る
 - 1.8: `ui.snapshot` / `ui.find` / `ui.waitFor` に `skipWebContent` (webarea の中身を省く)。静的テキスト断片の結合で元の文字列の空白を見て語の切れ目を判定。`textLimit` は本文 (text) にだけ適用し要素名は 80 未満に切らない
 - 1.7: `ui.waitFor` のタイムアウトに `lastSnapshot` (最後に見えていたツリー、ref なし) と `matches` を添える。`input.scroll` は画面外の要素を基点にすると可視の祖先を使い `anchor` を返す。`truncatedBy`。ref 表を 200 に拡大。一致数を末端優先に。無名の静的テキストを省く。ヒットテストで対象の frame に収まる要素は対象の一部とみなす (ブラウザ UI の無名 group による `OBSTRUCTED` 誤検知の回避)。スクロール後の frame 安定判定を連続 2 回に
