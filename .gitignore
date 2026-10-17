@@ -277,3 +277,9 @@ iOSInjectionProject/
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,swift,node
+
+### cccu evals ###
+# Site-specific harnesses, run logs and screenshots live under server/evals/ and are not tracked.
+# Whitelist individual files explicitly with a leading "!" when they are worth keeping.
+server/evals/*
+!server/evals/README.md
