@@ -6,8 +6,7 @@ import Foundation
 /// 差分が大きすぎる (ページ遷移など) ときは新しいツリー全体を返し、変化が無ければその旨を返す。
 public enum ChangeReport {
     public static let settleMax: TimeInterval = 1.2      // 変化が現れるまで待つ上限
-    static let fullThresholdLines = 60                   // これより大きい差分は全体を返す
-    static let fullThresholdRatio = 0.4
+    static let fullThresholdRatio = 0.75                 // 追加行が全体のこの割合を超えたら (ほぼ別ページ) 全体を返す
 
     /// 操作を囲む。mode: "none" (既定: 何もしない) | "diff" | "full"
     static func wrap(_ p: Params, anchor: AXElement?, pid: pid_t?, _ body: () throws -> JSONObject) throws -> JSONObject {
@@ -17,29 +16,34 @@ public enum ChangeReport {
         opts.maxNodes = 3000
         if let t = p.optInt("textLimit") { opts.valueLimit = max(10, t) }
         let before = SnapshotBuilder.build(root: root, options: opts).text
+        let beforeKey = normalize(before)
         var result = try body()
 
-        // 変化が現れ、かつ安定するまで待つ (アニメーションやフィードバックの挿入が終わるまで)
-        let deadline = Date().addingTimeInterval(settleMax)
+        // 変化が現れ、かつ安定するまで待つ (アニメーションやフィードバックの挿入が終わるまで)。待ち時間は呼び出し側が延ばせる
+        // (単語カードのように数秒後に変わるステップ用)
+        let wait = p.optInt("reportWaitMs").map { TimeInterval(max(200, min($0, 15000))) / 1000 } ?? settleMax
+        let deadline = Date().addingTimeInterval(wait)
         spin(0.2)
         var after = SnapshotBuilder.build(root: root, options: opts)
-        var last = after.text
+        var last = normalize(after.text)
         var stable = 0
         while Date() < deadline {
             spin(0.12)
             after = SnapshotBuilder.build(root: root, options: opts)
-            if after.text == last { if after.text != before { stable += 1; if stable >= 1 { break } } }
+            let key = normalize(after.text)
+            if key == last { if key != beforeKey { stable += 1; if stable >= 1 { break } } }
             else { stable = 0 }
-            last = after.text
+            last = key
         }
         let id = RefTable.shared.register(after.refs)
         var changes: JSONObject = ["snapshot": id, "refCount": after.refs.count]
-        if after.text == before {
+        if normalize(after.text) == beforeKey {
             changes["changed"] = false
         } else {
             let (added, removed) = diff(before: before, after: after.text)
             let afterLines = after.text.split(separator: "\n").count
-            let tooBig = added.count + removed.count > fullThresholdLines || Double(added.count + removed.count) > Double(max(afterLines, 1)) * fullThresholdRatio
+            // 差分が全体より長いか、ほぼ全部入れ替わったときだけ全体を返す (スクロールやフィードバック挿入では差分の方が短い)
+            let tooBig = added.count + removed.count > afterLines || Double(added.count) > Double(max(afterLines, 1)) * fullThresholdRatio
             changes["changed"] = true
             changes["added"] = added.count
             changes["removed"] = removed.count
@@ -73,27 +77,33 @@ public enum ChangeReport {
         return nil
     }
 
-    /// 行の多重集合の差 (順序は after / before の出現順)。ref ラベルは比較から除く (番号が振り直されるため)
+    /// 行の多重集合の差 (順序は after / before の出現順)。比較は正規化した行で行う:
+    /// ref 番号 (振り直される)、`[offscreen]` / `[focused]` / `[at x,y wxh]` (スクロールやフォーカス移動で変わるだけで内容の変化ではない) を除く
     static func diff(before: String, after: String) -> (added: [String], removed: [String]) {
         let b = before.split(separator: "\n").map(String.init)
         let a = after.split(separator: "\n").map(String.init)
         var counts: [String: Int] = [:]
-        for l in b { counts[stripRefs(l), default: 0] += 1 }
+        for l in b { counts[normalizeLine(l), default: 0] += 1 }
         var added: [String] = []
         for l in a {
-            let k = stripRefs(l)
+            let k = normalizeLine(l)
             if let n = counts[k], n > 0 { counts[k] = n - 1 } else { added.append(l) }
         }
         var removed: [String] = []
         var acounts: [String: Int] = [:]
-        for l in a { acounts[stripRefs(l), default: 0] += 1 }
+        for l in a { acounts[normalizeLine(l), default: 0] += 1 }
         for l in b {
-            let k = stripRefs(l)
+            let k = normalizeLine(l)
             if let n = acounts[k], n > 0 { acounts[k] = n - 1 } else { removed.append(l) }
         }
         return (added, removed)
     }
 
+    static let noise = try! NSRegularExpression(pattern: #" \[(ref=e\d+|offscreen|focused|at -?\d+,-?\d+ \d+x\d+)\]"#)
+    static func normalizeLine(_ line: String) -> String {
+        noise.stringByReplacingMatches(in: line, range: NSRange(line.startIndex..., in: line), withTemplate: "")
+    }
+    static func normalize(_ text: String) -> String { text.split(separator: "\n").map { normalizeLine(String($0)) }.joined(separator: "\n") }
     static func stripRefs(_ line: String) -> String {
         line.replacingOccurrences(of: #" \[ref=e\d+\]"#, with: "", options: .regularExpression)
     }

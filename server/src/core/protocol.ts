@@ -69,10 +69,10 @@ export interface Methods {
   "ui.query": { params: { scope: Scope; selector: string; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.attributes": { params: { ref: Ref; names?: string[] }; result: { attributes: Record<string, unknown> } };
-  "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown; report?: ReportMode; textLimit?: number }; result: { changes?: Changes; warning?: string } };
-  "ui.performAction": { params: { ref: Ref; action: string; report?: ReportMode; textLimit?: number }; result: { changes?: Changes; warning?: string } };
+  "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown; report?: ReportMode; textLimit?: number; reportWaitMs?: number }; result: { changes?: Changes; warning?: string } };
+  "ui.performAction": { params: { ref: Ref; action: string; report?: ReportMode; textLimit?: number; reportWaitMs?: number }; result: { changes?: Changes; warning?: string } };
   "ui.click": {
-    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean; report?: ReportMode; textLimit?: number };
+    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean; report?: ReportMode; textLimit?: number; reportWaitMs?: number };
     result: { method: string; warning?: string; changes?: Changes };
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
@@ -80,8 +80,8 @@ export interface Methods {
     params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
-  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean; report?: ReportMode; textLimit?: number }; result: { method: string; warning?: string; changes?: Changes } };
-  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean; report?: ReportMode; textLimit?: number }; result: { method: string; item?: string; warning?: string; changes?: Changes } };
+  "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean; report?: ReportMode; textLimit?: number; reportWaitMs?: number }; result: { method: string; warning?: string; changes?: Changes } };
+  "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean; report?: ReportMode; textLimit?: number; reportWaitMs?: number }; result: { method: string; item?: string; warning?: string; changes?: Changes } };
   "session.begin": { params: { pid?: number; bundleId?: string; blockInput?: boolean; maxSeconds: number }; result: { pid: number; previousPid?: number; blocking: boolean; maxSeconds: number; warning?: string } };
   "session.extend": { params: { maxSeconds: number }; result: SessionStatus };
   "session.end": { params: Record<string, never>; result: { active: false; blockedInputs?: number; seconds?: number; warning?: string } };

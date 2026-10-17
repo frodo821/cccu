@@ -201,6 +201,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.15: 変化の報告: `reportWaitMs` (待ち時間、既定 1200)。比較から `[offscreen]` / `[focused]` / `[at …]` を除外 (スクロールやフォーカス移動だけでは「変化なし」)。全体返却は差分が全体より長いか追加行が 75% 超のときだけ
 - 1.14: `screen.capture` に `grid` (画面座標のグリッド線とラベルを描く間隔 px)。AX ツリーが使えないときのフォールバック (`ui.click` の `point` と組み合わせる)
 - 1.13: 操作後の変化の報告。`ui.click` / `ui.setAttribute` / `ui.performAction` / `input.type` / `input.key` が `report: "none"|"diff"|"full"` (既定 none) と `textLimit` を受け取り、結果に `changes: {snapshot, refCount, changed, added?, removed?, addedLines?, removedLines?, full?}` を添える。対象は要素の webarea (無ければウィンドウ、ref が無ければアプリの最前面 webarea)。操作後、変化が現れて安定するまで最大 1.2 秒待つ。差分が 60 行超または 4 割超なら `full` に新しいツリー全体
 - 1.12: `Scope` に `{pid, webarea: true}` (最前面ウィンドウの最も外側の AXWebArea。読み込み直後は最大 1 秒待つ)。`ui.click` は押下後に frame が動いていて、押下点が frame の 3px 内側に入っていないか押下点のヒットテストが対象と無関係なら、新しい中心で 1 回だけ押し直し、`method` に明記。`AXScrollToVisible` 後に最低 0.3 秒待つ。`ui.query` の `:has()` に相対結合子 (`:has(> X)` など)

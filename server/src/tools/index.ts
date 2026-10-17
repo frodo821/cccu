@@ -40,6 +40,7 @@ const findShape = { role: z.string().optional(), text: z.string().optional(), va
 const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
 const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
 const reportArg = z.enum(["none", "diff", "full"]).optional().describe('Desktop: after the action, report what changed on the page: "diff" (default for clicks/typing/values/actions) lists added and removed lines with fresh refs, or the whole new tree when the change is large; "full" always returns the new tree; "none" skips it (use when batching many actions)');
+const reportWaitArg = z.number().int().min(200).max(15000).optional().describe("Desktop: how long to wait for the page to change after the action before reporting (default 1200 ms; raise it for steps that change a few seconds later, e.g. 3500 for audio-gated cards)");
 const pointerArg = z.enum(["human", "warp"]).optional().describe("Desktop: how the cursor travels for a real click/scroll. Default human (Fitts's-law motion); warp jumps instantly");
 const withinArg = z.string().optional().describe('Limit to the subtree of this snapshot ref (e.g. "s3/e5"), not a target id. Browser apps are scoped to the page by default; to see tabs or the address bar use target "window:<pid>:<n>" or scope "app" instead');
 const scopeArg = z.enum(["page", "app"]).optional().describe('Desktop browsers only: "page" (default) limits to the web content; "app" shows the application UI (menu bar, windows, tab strip, address bar) without the page content');
@@ -122,13 +123,13 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_click",
     { description: "Click an element (accessibility press when possible, otherwise a real click at its center). Runs in the background by default; if the UI did not change, retry with foreground: true. A real click fails with OBSTRUCTED when something else (a modal, a scrim) covers the point: act on that element instead, or pass force: true.",
-      inputSchema: { ref: refArg.optional().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser). Omit it and pass x,y to click a screen point (desktop fallback, e.g. read from a cu_screenshot with grid)'), x: z.number().optional(), y: z.number().optional().describe("Desktop: screen coordinates to click when no ref is usable"), button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg, force: z.boolean().optional().describe("Desktop: click even if the point is covered by another element (an OBSTRUCTED error told you what covers it)"), report: reportArg, textLimit: textLimitArg } },
+      inputSchema: { ref: refArg.optional().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser). Omit it and pass x,y to click a screen point (desktop fallback, e.g. read from a cu_screenshot with grid)'), x: z.number().optional(), y: z.number().optional().describe("Desktop: screen coordinates to click when no ref is usable"), button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg, force: z.boolean().optional().describe("Desktop: click even if the point is covered by another element (an OBSTRUCTED error told you what covers it)"), report: reportArg, textLimit: textLimitArg, reportWaitMs: reportWaitArg } },
     ({ ref, x, y, report = "diff", ...opts }) => run(async () => {
       if (!ref) {
         if (x === undefined || y === undefined) throw new HelperError("INVALID_PARAMS", "cu_click needs ref, or x and y");
         const b = ctx.backends.find((b) => b.kind === "desktop" && b.clickAt);
         if (!b?.clickAt) throw new HelperError("UNSUPPORTED", "point clicks need the desktop backend");
-        const { foreground: _f, force: _force, textLimit: _t, ...rest } = opts;
+        const { foreground: _f, force: _force, textLimit: _t, reportWaitMs: _w, ...rest } = opts;
         return text(`clicked ${x},${y} via ${await b.clickAt(x, y, rest)}`);
       }
       const [b, r] = byRef(ref); return text(`clicked ${ref} via ${await b.click(r, { ...opts, report: b.kind === "desktop" ? report : undefined })}`);
@@ -136,7 +137,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_type",
     { description: "Type text into an element (focuses it first). Without ref, types into whatever has focus. clear replaces existing text; submit presses Enter afterwards.",
-      inputSchema: { ref: refArg.optional(), text: z.string(), clear: z.boolean().optional(), submit: z.boolean().optional(), foreground: foregroundArg, report: reportArg, textLimit: textLimitArg } },
+      inputSchema: { ref: refArg.optional(), text: z.string(), clear: z.boolean().optional(), submit: z.boolean().optional(), foreground: foregroundArg, report: reportArg, textLimit: textLimitArg, reportWaitMs: reportWaitArg } },
     ({ ref, text: t, report = "diff", ...opts }) => run(async () => {
       const [b, r] = ref ? byRef(ref) : [ctx.backends[0], undefined];
       return text(`typed via ${await b.type(r, t, { ...opts, report: b.kind === "desktop" ? report : undefined })}`);
@@ -144,8 +145,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_key",
     { description: "Press a key with optional modifiers, e.g. key=\"n\" modifiers=[\"cmd\"]. Key names follow KeyboardEvent.key (Enter, Escape, ArrowDown, Tab, a, F5). target picks the app/tab. Desktop shortcuts run through the app's menu without bringing it to the front when possible.",
-      inputSchema: { target: targetArg.optional(), key: z.string(), modifiers, foreground: foregroundArg, report: reportArg.describe('Desktop: report what changed on the page afterwards ("diff" / "full"); default "none" for keys'), textLimit: textLimitArg } },
-    ({ target, key, modifiers: m, foreground, report, textLimit }) => run(async () => { const b = target ? byTarget(target) : ctx.backends[0]; return text(`ok via ${await b.key(target, key, m, { foreground, report: b.kind === "desktop" ? report : undefined, textLimit })}`); }));
+      inputSchema: { target: targetArg.optional(), key: z.string(), modifiers, foreground: foregroundArg, report: reportArg.describe('Desktop: report what changed on the page afterwards ("diff" / "full"); default "none" for keys'), textLimit: textLimitArg, reportWaitMs: reportWaitArg } },
+    ({ target, key, modifiers: m, foreground, report, textLimit, reportWaitMs }) => run(async () => { const b = target ? byTarget(target) : ctx.backends[0]; return text(`ok via ${await b.key(target, key, m, { foreground, report: b.kind === "desktop" ? report : undefined, textLimit, reportWaitMs })}`); }));
 
   server.registerTool("cu_scroll",
     { description: "Scroll at an element (positive dy scrolls down).", inputSchema: { ref: refArg, dx: z.number().int().optional(), dy: z.number().int().optional(), foreground: foregroundArg, pointer: pointerArg } },
@@ -153,8 +154,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_set_value",
     { description: "Set an element's value directly (checkbox: true/false, slider: number, text field / select: string).",
-      inputSchema: { ref: refArg, value: z.union([z.string(), z.number(), z.boolean()]), report: reportArg, textLimit: textLimitArg } },
-    ({ ref, value, report = "diff", textLimit }) => run(async () => { const [b, r] = byRef(ref); const out = await b.setValue(r, value, b.kind === "desktop" ? { report, textLimit } : {}); return text(out ?? "ok"); }));
+      inputSchema: { ref: refArg, value: z.union([z.string(), z.number(), z.boolean()]), report: reportArg, textLimit: textLimitArg, reportWaitMs: reportWaitArg } },
+    ({ ref, value, report = "diff", textLimit, reportWaitMs }) => run(async () => { const [b, r] = byRef(ref); const out = await b.setValue(r, value, b.kind === "desktop" ? { report, textLimit, reportWaitMs } : {}); return text(out ?? "ok"); }));
 
   server.registerTool("cu_focus",
     { description: "Give keyboard focus to an element.", inputSchema: { ref: refArg } },
@@ -167,8 +168,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_action",
     { description: "Perform a raw action: desktop AX actions (AXPress, AXShowMenu, AXIncrement, AXConfirm, AXCancel) or browser actions (click, hover, contextmenu, submit, scrollIntoView).",
-      inputSchema: { ref: refArg, action: z.string(), report: reportArg, textLimit: textLimitArg } },
-    ({ ref, action, report = "diff", textLimit }) => run(async () => { const [b, r] = byRef(ref); const out = await b.action(r, action, b.kind === "desktop" ? { report, textLimit } : {}); return text(out ?? "ok"); }));
+      inputSchema: { ref: refArg, action: z.string(), report: reportArg, textLimit: textLimitArg, reportWaitMs: reportWaitArg } },
+    ({ ref, action, report = "diff", textLimit, reportWaitMs }) => run(async () => { const [b, r] = byRef(ref); const out = await b.action(r, action, b.kind === "desktop" ? { report, textLimit, reportWaitMs } : {}); return text(out ?? "ok"); }));
 
   server.registerTool("cu_navigate",
     { description: "Open a URL, go \"back\" / \"forward\", or \"close\" the tab. CDP Chrome: target \"tab:<id>\" (omitted or \"new\" creates a tab; launches Chrome if not connected). The user's own Chrome: target its bundle id (com.google.Chrome) or app:<pid>; the URL goes through the address bar of the current tab (url \"new\" opens a tab first).",

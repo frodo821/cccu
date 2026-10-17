@@ -256,8 +256,13 @@ final class ChangeReportTests: XCTestCase {
         let before = "- webarea \"L\" [ref=e1]\n  - heading \"Q1\"\n  - button \"確認\" [ref=e2] [disabled]\n  - button \"A\" [ref=e3]"
         let after = "- webarea \"L\" [ref=e1]\n  - heading \"Q1\"\n  - text \"正解は A\"\n  - button \"確認\" [ref=e4] [disabled]\n  - button \"A\" [ref=e5] [focused]\n  - button \"次へ進む\" [ref=e6]"
         let (added, removed) = ChangeReport.diff(before: before, after: after)
-        XCTAssertEqual(added, ["  - text \"正解は A\"", "  - button \"A\" [ref=e5] [focused]", "  - button \"次へ進む\" [ref=e6]"])
-        XCTAssertEqual(removed, ["  - button \"A\" [ref=e3]"])
+        // [focused] の移動は内容の変化ではないので差分に出ない
+        XCTAssertEqual(added, ["  - text \"正解は A\"", "  - button \"次へ進む\" [ref=e6]"])
+        XCTAssertEqual(removed, [])
+        // スクロールで [offscreen] / [at] が変わっただけなら変化なし
+        XCTAssertEqual(ChangeReport.normalize("- button \"x\" [ref=e1] [offscreen]\n- button [ref=e2] [at 10,20 30x40]"), ChangeReport.normalize("- button \"x\" [ref=e7]\n- button [ref=e9] [at 10,60 30x40]"))
+        // [disabled] の変化は残る
+        XCTAssertNotEqual(ChangeReport.normalizeLine("- button \"確認\" [disabled]"), ChangeReport.normalizeLine("- button \"確認\""))
         XCTAssertEqual(ChangeReport.stripRefs("- button \"x\" [ref=e12] [disabled]"), "- button \"x\" [disabled]")
     }
 }

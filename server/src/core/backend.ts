@@ -15,7 +15,7 @@ export interface TargetInfo {
 
 export type BrowserScope = "page" | "app";
 /** desktop: 操作後の変化の報告 (none | diff | full) と、その行の文字数上限 */
-export interface ActionReportOptions { report?: "none" | "diff" | "full"; textLimit?: number }
+export interface ActionReportOptions { report?: "none" | "diff" | "full"; textLimit?: number; reportWaitMs?: number }
 export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; within?: Ref; textLimit?: number; scope?: BrowserScope }
 export type WaitCondition = { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number };
 
