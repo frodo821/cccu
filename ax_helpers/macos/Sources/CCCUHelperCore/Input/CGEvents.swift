@@ -77,7 +77,7 @@ public enum Input {
         Thread.sleep(forTimeInterval: Double.random(in: 0.03...0.07, using: &rng))   // 押す前の静止
     }
 
-    /// 操作後にカーソルを元の位置へ戻す (ユーザーのカーソルを奪ったままにしない)。瞬間移動でよい
+    /// 操作後にカーソルを元の位置へ戻す (CCCU_POINTER_RESTORE=always のときだけ使う)。瞬間移動でよい
     public static func restorePointer(to p: CGPoint) {
         CGWarpMouseCursorPosition(p)
         CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
@@ -103,7 +103,7 @@ public enum Input {
             if human { Thread.sleep(forTimeInterval: Double.random(in: 0.04...0.09, using: &rng)) }   // 押下時間
             post(up, pid: pid, direct: pid != nil)
         }
-        if human {
+        if human && restorePointerAfterAction {
             Thread.sleep(forTimeInterval: 0.05)
             restorePointer(to: origin)
             if ProcessInfo.processInfo.environment["CCCU_DEBUG"] != nil {
@@ -160,7 +160,6 @@ public enum Input {
             e?.post(tap: .cghidEventTap)
             Thread.sleep(forTimeInterval: 1.0 / 60)
         }
-        Thread.sleep(forTimeInterval: 0.05)
-        restorePointer(to: origin)
+        if restorePointerAfterAction { Thread.sleep(forTimeInterval: 0.05); restorePointer(to: origin) }
     }
 }

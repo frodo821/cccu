@@ -146,8 +146,9 @@ always brings the target to the front.
 
 Real mouse actions move the cursor like a hand would instead of teleporting it: the travel time follows Fitts's law,
 the path is slightly curved with a minimum-jerk velocity profile, the click lands near (not exactly at) the centre,
-and scrolling is a decelerating series of trackpad-style wheel events. The cursor is put back where it was
-afterwards. Set `CCCU_POINTER=warp` for the old instant behaviour, or pass `pointer: "warp"` on a single action.
+and scrolling is a decelerating series of trackpad-style wheel events. The cursor stays where the action happened
+(where your eyes are if you are watching; set `CCCU_POINTER_RESTORE=always` to warp it back to its previous
+position). Set `CCCU_POINTER=warp` for the old instant behaviour, or pass `pointer: "warp"` on a single action.
 
 ## Permissions
 

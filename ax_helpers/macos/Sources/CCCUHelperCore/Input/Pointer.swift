@@ -9,6 +9,11 @@ public enum PointerMode: String { case human, warp }
 public var pointerMode: PointerMode =
     PointerMode(rawValue: ProcessInfo.processInfo.environment["CCCU_POINTER"] ?? "") ?? .human
 
+/// 操作後にカーソルを元の位置へ戻すか。既定は戻さない:
+/// 見ている人にとってカーソルは視線の先 (操作した場所) にある方が自然で、見ていない人はどのみち探すことになる。
+/// 戻す動作自体も瞬間移動で、ユーザーがその間にマウスを動かしていれば奪い合いになる (CCCU_POINTER_RESTORE=always で有効化)
+public var restorePointerAfterAction = ProcessInfo.processInfo.environment["CCCU_POINTER_RESTORE"] == "always"
+
 public enum Fitts {
     /// 所要時間 (秒)。a, b はマウス操作の典型値。極端に短い/長い移動はクランプする
     public static let a = 0.05, b = 0.12

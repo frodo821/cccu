@@ -141,7 +141,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - 軌跡は 2 次ベジェ (進行方向に垂直に距離の 3〜10% 膨らむ) + 最小ジャーク速度プロファイル、120 Hz の `mouseMoved`
 - 着地点は中心から目標の 15% 以内に散らす。押す前に 30〜70ms 静止し、押下は 40〜90ms
 - スクロールは pixel 単位の差分を減速プロファイルで分割し (最大 28 回、60 Hz)、トラックパッド風の phase (began / changed / ended) を付ける
-- 操作後はカーソルを元の位置へ戻す (ここは瞬間移動)
+- 操作後のカーソルは操作した場所に残す (既定)。見ている人には視線の先にある方が自然で、戻す動作は瞬間移動になりユーザーの操作と奪い合う。`CCCU_POINTER_RESTORE=always` で元の位置へ戻す
 - `CCCU_POINTER=human|warp` (既定 human)。各メソッドは `pointer?: "human"|"warp"` で上書きできる。`sys.hello` の `pointer` で確認できる
 
 ## 6. スナップショット記法

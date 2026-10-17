@@ -42,7 +42,7 @@ Screenshots
 Background operation
 - Actions avoid leaving the app in front of the user. Accessibility presses, value changes, text insertion and menu shortcuts stay in the background; real keys, `submit: true` typing, clicks on web content and scrolling activate the app for a moment and then return focus (`...+restore`). Each action reports the path it took (`ax`, `menu`, `keys+restore`, `cg+restore`, ...).
 - Keep the flicker low: batch text with `cu_type` instead of sending keys one by one, and use `submit: true` rather than a separate Enter.
-- Real clicks and scrolls move the cursor like a hand (Fitts's-law timing, slight curve, landing near the centre) and put it back afterwards; a click costs roughly 0.3 to 1 second. Pass `pointer: "warp"` only when speed matters more than realism (for example on your own test pages).
+- Real clicks and scrolls move the cursor like a hand (Fitts's-law timing, slight curve, landing near the centre) and leave it there; a click costs roughly 0.3 to 1 second. Pass `pointer: "warp"` only when speed matters more than realism (for example on your own test pages).
 - Some things only work when the app is active (formatting toggles, anything that acts on the key window). After an action, check the result (snapshot / `cu_find` / `cu_wait`). If nothing changed, repeat the same action with `foreground: true`: it activates the app briefly, acts, and gives focus back.
 - Prefer elements over keystrokes when both exist: a window's `closebutton`, a sheet's buttons and menu items work in the background; cmd+W needs a brief activation.
 - `cu_type` without a ref types into whatever currently has keyboard focus, which is the user's app, not your target. In the background always pass a ref.
