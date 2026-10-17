@@ -67,14 +67,15 @@ public func registerUIMethods(_ d: Dispatcher) {
                 return ["method": fg ? "ax+foreground" : "ax"] as JSONObject
             }
             guard let c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
+            let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
-                try Input.click(at: c, button: button, count: count, modifiers: mods)
+                try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer)
             }
             return ["method": activationPolicy == .foreground ? "cg" : "cg+restore"] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
-        try Input.click(at: pt, button: button, count: count, modifiers: mods)
+        try Input.click(at: pt, button: button, count: count, modifiers: mods, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode)
         return ["method": "cg"] as JSONObject
     }
 
@@ -133,7 +134,7 @@ func focus(_ el: AXElement) throws {
     }
     guard let c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element cannot be focused") }
     try withForeground(el.pid, window: el.window) {
-        try Input.click(at: c)
+        try Input.click(at: c, size: el.frame?.size)
         Thread.sleep(forTimeInterval: 0.05)
     }
 }

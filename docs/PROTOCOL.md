@@ -1,4 +1,4 @@
-# cccu helper protocol v1.4
+# cccu helper protocol v1.5
 
 MCP サーバー (クライアント) と OS 別アクセシビリティヘルパー (サーバー) の間の契約。
 `ax_helpers/*` の実装はすべてこの文書に従う。設計背景は `DESIGN.md` §4。
@@ -132,6 +132,18 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - キーウィンドウに依存する操作 (書式の切り替え、ウィンドウ対象のメニューコマンドなど) は背面では効かない。メニュー項目が無効な場合、`input.key` は自動で `hid+restore` に落ちる。AXPress が効かなかった場合はクライアントが `foreground: true` で再試行する
 - `input.type` を ref なしで呼ぶと、その時点でキーボードフォーカスを持つ要素 (背面操作中はユーザーのアプリ) に入力される。背面操作では必ず ref を渡す
 
+### ポインタの動かし方 (v1.5)
+
+実マウス操作 (`ui.click` の実クリック、`input.scroll`、`input.mouse` の drag) は既定でカーソルを **人の動きとして** 動かす。
+瞬間移動 (ワープ) だとホバー状態を前提にした UI、軌跡を見る検知、ドラッグ処理で失敗することがあるため。
+
+- 所要時間はフィッツの法則 `MT = a + b·log2(D/W + 1)` (a = 50ms, b = 120ms/bit、0.08〜0.6 秒にクランプ)。W は目標の短辺
+- 軌跡は 2 次ベジェ (進行方向に垂直に距離の 3〜10% 膨らむ) + 最小ジャーク速度プロファイル、120 Hz の `mouseMoved`
+- 着地点は中心から目標の 15% 以内に散らす。押す前に 30〜70ms 静止し、押下は 40〜90ms
+- スクロールは pixel 単位の差分を減速プロファイルで分割し (最大 28 回、60 Hz)、トラックパッド風の phase (began / changed / ended) を付ける
+- 操作後はカーソルを元の位置へ戻す (ここは瞬間移動)
+- `CCCU_POINTER=human|warp` (既定 human)。各メソッドは `pointer?: "human"|"warp"` で上書きできる。`sys.hello` の `pointer` で確認できる
+
 ## 6. スナップショット記法
 
 ```
@@ -167,6 +179,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.5: フィッツの法則によるポインタ移動とトラックパッド風スクロール、`pointer` パラメータ
 - 1.4: 前面化ポリシー (既定で背面操作)、`foreground` パラメータ、`app.launch`、操作系メソッドが `method` を返す
 - 1.3: `input.type` に `method` を追加、`submit` 時は実打鍵が既定
 - 1.2: `ui.observe` / `ui.unobserve` と `ax.event` 通知

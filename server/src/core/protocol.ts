@@ -33,6 +33,7 @@ export interface HelloResult {
   screenRecording?: boolean;   // v1.3
   responsible?: boolean;       // v1.3: ヘルパー自身が TCC の責任プロセスか
   activation?: "background" | "restore" | "foreground";   // v1.4: 前面化ポリシー
+  pointer?: "human" | "warp";                             // v1.5: ポインタの動かし方
   capabilities: string[];
 }
 
@@ -65,7 +66,7 @@ export interface Methods {
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
   "ui.click": {
-    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean };
+    params: { ref?: Ref; point?: Point; button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp" };
     result: { method: string };
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
@@ -75,7 +76,7 @@ export interface Methods {
   };
   "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };
   "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean }; result: { method: string; item?: string } };
-  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean }; result: { method: string } };
+  "input.scroll": { params: { ref?: Ref; point?: Point; dx: number; dy: number; foreground?: boolean; pointer?: "human" | "warp" }; result: { method: string } };
   "input.mouse": {
     params: { point: Point; action: "move" | "down" | "up" | "drag"; to?: Point; button?: "left" | "right" };
     result: Record<string, never>;

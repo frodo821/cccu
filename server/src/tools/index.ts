@@ -27,6 +27,7 @@ const targetArg = z.string().describe('"app:<pid>", "window:<pid>:<n>", a bundle
 const findShape = { role: z.string().optional(), text: z.string().optional(), value: z.string().optional() };
 const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
 const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
+const pointerArg = z.enum(["human", "warp"]).optional().describe("Desktop: how the cursor travels for a real click/scroll. Default human (Fitts's-law motion); warp jumps instantly");
 const withinArg = z.string().optional().describe('Limit to the subtree of this ref. Browser apps are scoped to the page (webarea) by default; pass a window ref to see tabs and the address bar');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
@@ -98,7 +99,7 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_click",
     { description: "Click an element (accessibility press when possible, otherwise a real click at its center). Runs in the background by default; if the UI did not change, retry with foreground: true.",
-      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg } },
+      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg } },
     ({ ref, ...opts }) => run(async () => { const [b, r] = byRef(ref); return text(`clicked ${ref} via ${await b.click(r, opts)}`); }));
 
   server.registerTool("cu_type",
@@ -115,8 +116,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     ({ target, key, modifiers: m, foreground }) => run(async () => text(`ok via ${await (target ? byTarget(target) : ctx.backends[0]).key(target, key, m, { foreground })}`)));
 
   server.registerTool("cu_scroll",
-    { description: "Scroll at an element (positive dy scrolls down).", inputSchema: { ref: refArg, dx: z.number().int().optional(), dy: z.number().int().optional(), foreground: foregroundArg } },
-    ({ ref, dx = 0, dy = 0, foreground }) => run(async () => { const [b, r] = byRef(ref); return text(`ok via ${await b.scroll(r, dx, dy, { foreground })}`); }));
+    { description: "Scroll at an element (positive dy scrolls down).", inputSchema: { ref: refArg, dx: z.number().int().optional(), dy: z.number().int().optional(), foreground: foregroundArg, pointer: pointerArg } },
+    ({ ref, dx = 0, dy = 0, foreground, pointer }) => run(async () => { const [b, r] = byRef(ref); return text(`ok via ${await b.scroll(r, dx, dy, { foreground, pointer })}`); }));
 
   server.registerTool("cu_set_value",
     { description: "Set an element's value directly (checkbox: true/false, slider: number, text field / select: string).",

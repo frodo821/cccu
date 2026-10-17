@@ -142,6 +142,13 @@ or `foreground` (activate and stay, the old behaviour). `CCCU_DIRECT_INPUT=1` po
 process without activating it; that works in AppKit apps but Chrome silently ignores such events. `cu_activate`
 always brings the target to the front.
 
+## Pointer motion
+
+Real mouse actions move the cursor like a hand would instead of teleporting it: the travel time follows Fitts's law,
+the path is slightly curved with a minimum-jerk velocity profile, the click lands near (not exactly at) the centre,
+and scrolling is a decelerating series of trackpad-style wheel events. The cursor is put back where it was
+afterwards. Set `CCCU_POINTER=warp` for the old instant behaviour, or pass `pointer: "warp"` on a single action.
+
 ## Permissions
 
 The helper makes itself the responsible process for macOS privacy permissions, so they are granted to **cccu-helper**

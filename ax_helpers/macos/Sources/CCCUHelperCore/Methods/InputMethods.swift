@@ -86,11 +86,12 @@ public func registerInputMethods(_ d: Dispatcher) {
                 Input.scroll(at: c, dx: dx, dy: dy, pid: el.pid)   // 対象プロセスへ直接 (前面化しない)
                 return ["method": "pid"] as JSONObject
             }
-            withForeground(el.pid, window: el.window) { Input.scroll(at: c, dx: dx, dy: dy) }
+            let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
+            withForeground(el.pid, window: el.window) { Input.scroll(at: c, dx: dx, dy: dy, mode: pointer) }
             return ["method": activationPolicy == .foreground ? "hid" : "hid+restore"] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }
-        Input.scroll(at: pt, dx: dx, dy: dy)
+        Input.scroll(at: pt, dx: dx, dy: dy, mode: PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode)
         return ["method": "hid"] as JSONObject
     }
 
