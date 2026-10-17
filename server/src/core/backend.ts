@@ -13,7 +13,7 @@ export interface TargetInfo {
   extra?: string[];      // "[hidden]" など表示用フラグ
 }
 
-export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; within?: Ref }
+export interface SnapshotOptions { maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; within?: Ref; textLimit?: number }
 export type WaitCondition = { exists: FindQuery } | { gone: FindQuery } | { stable: number };
 
 export interface Backend {
@@ -38,7 +38,7 @@ export interface Backend {
   attributes(ref: Ref, names?: string[]): Promise<Record<string, unknown>>;
   action(ref: Ref, action: string): Promise<void>;
   /** PNG スクリーンショット (補助情報)。desktop は Screen Recording 権限が要る */
-  screenshot(target: string, opts?: { maxWidth?: number }): Promise<{ pngBase64: string; width?: number; height?: number }>;
+  screenshot(target: string, opts?: { maxWidth?: number }): Promise<{ pngBase64: string; width?: number; height?: number; frame?: { x: number; y: number; w: number; h: number }; scale?: number }>;
 
   /** UI イベント購読 (desktop: AXObserver)。events() はバッファを返して空にする */
   observe(target: string, notifications?: string[]): Promise<{ subscription: string; notifications: string[] }>;

@@ -57,10 +57,10 @@ export interface Methods {
   "window.list": { params: { pid?: number }; result: { windows: WindowInfo[] } };
   "window.raise": { params: { pid: number; windowNumber: number }; result: Record<string, never> };
   "ui.snapshot": {
-    params: { scope: Scope; maxDepth?: number; maxNodes?: number; interestingOnly?: boolean };
+    params: { scope: Scope; maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; textLimit?: number };
     result: SnapshotResult;
   };
-  "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number }; result: SnapshotResult };
+  "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number; textLimit?: number }; result: SnapshotResult };
   "ui.attributes": { params: { ref: Ref; names?: string[] }; result: { attributes: Record<string, unknown> } };
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };

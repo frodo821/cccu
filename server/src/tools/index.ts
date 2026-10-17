@@ -26,7 +26,8 @@ const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (
 const targetArg = z.string().describe('"app:<pid>", "window:<pid>:<n>", a bundle id like com.apple.TextEdit, or "tab:<id>" for a Chrome tab');
 const findShape = { role: z.string().optional(), text: z.string().optional(), value: z.string().optional() };
 const foregroundArg = z.boolean().optional().describe("Desktop: retry an action that had no effect by briefly bringing the app to the front, acting, then returning focus to the previous app. Default: act in the background");
-const withinArg = z.string().optional().describe('Limit to the subtree of this ref (e.g. the "webarea" of a Chrome window to skip the browser chrome)');
+const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
+const withinArg = z.string().optional().describe('Limit to the subtree of this ref. Browser apps are scoped to the page (webarea) by default; pass a window ref to see tabs and the address bar');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
 export function registerTools(server: McpServer, ctx: ToolContext) {
@@ -79,13 +80,13 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_snapshot",
     { description: "Accessibility-tree snapshot of a target. Actionable elements carry [ref=eN]; pass them to other tools as \"<snapshot>/<ref>\".",
-      inputSchema: { target: targetArg, within: withinArg, maxDepth: z.number().int().optional(), maxNodes: z.number().int().optional().describe("Default 800"), interestingOnly: z.boolean().optional() } },
+      inputSchema: { target: targetArg, within: withinArg, maxDepth: z.number().int().optional(), maxNodes: z.number().int().optional().describe("Default 800"), interestingOnly: z.boolean().optional(), textLimit: textLimitArg } },
     ({ target, within, ...opts }) => run(async () => snap(await byTarget(target).snapshot(target, { ...opts, within: within ? parseRef(within) : undefined }))));
 
   server.registerTool("cu_find",
     { description: "Find elements by role and/or text within a target; returns matches (with their contents) and ancestors. Cheaper than a full snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, ...findShape, exact: z.boolean().optional() } },
-    ({ target, within, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined }))));
+      inputSchema: { target: targetArg, within: withinArg, ...findShape, exact: z.boolean().optional(), textLimit: textLimitArg } },
+    ({ target, within, textLimit, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined, textLimit }))));
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",
@@ -147,7 +148,10 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     ({ target, maxWidth }) => run(async () => {
       const b = target ? byTarget(target) : ctx.backends[0];
       const r = await b.screenshot(target ?? "", { maxWidth });
-      return { content: [{ type: "image", data: r.pngBase64, mimeType: "image/png" } as any, { type: "text", text: `${r.width ?? "?"}x${r.height ?? "?"} png` }] };
+      const geo = r.frame
+        ? ` | captured area at screen ${Math.round(r.frame.x)},${Math.round(r.frame.y)} ${Math.round(r.frame.w)}x${Math.round(r.frame.h)}; image px = (screen - origin) * ${(r.scale ?? 1).toFixed(3)}. Element [at x,y] hints in snapshots use screen coordinates`
+        : "";
+      return { content: [{ type: "image", data: r.pngBase64, mimeType: "image/png" } as any, { type: "text", text: `${r.width ?? "?"}x${r.height ?? "?"} png${geo}` }] };
     }));
 
   server.registerTool("cu_observe",

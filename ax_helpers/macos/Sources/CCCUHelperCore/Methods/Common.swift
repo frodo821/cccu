@@ -109,6 +109,28 @@ func waitFrontmost(_ pid: pid_t, timeout: TimeInterval) -> Bool {
 }
 
 extension AXElement {
+    /// 実クリックや実打鍵の前に、要素を可視領域に入れる。ウェブ内容などは AXScrollToVisible を持つ。
+    /// 戻り値はスクロール後の中心座標
+    func ensureVisibleCenter() -> CGPoint? {
+        guard var f = frame else { return nil }
+        let visible = window?.frame?.insetBy(dx: 2, dy: 2)
+        // スクロールコンテナの表示範囲外にある要素は、Chrome が 1x1 の仮の frame で報告する。それも不可視として扱う
+        func usable(_ r: CGRect) -> Bool {
+            r.width > 2 && r.height > 2 && (visible.map { $0.contains(CGPoint(x: r.midX, y: r.midY)) } ?? true)
+        }
+        if !usable(f), actionNames().contains("AXScrollToVisible") {
+            try? perform("AXScrollToVisible")
+            // スムーズスクロールが終わるまで待つ (frame が実寸になり、位置が安定するまで)
+            var last = f
+            for _ in 0..<15 {
+                spin(0.08)
+                guard let now = frame else { break }
+                if usable(now), now.origin == last.origin { f = now; break }
+                last = now; f = now
+            }
+        }
+        return CGPoint(x: f.midX, y: f.midY)
+    }
     var isMainWindow: Bool { bool(kAXMainAttribute) ?? false }
     var windowNumber: Int {
         var id: CGWindowID = 0
@@ -156,7 +178,8 @@ extension Params {
         let s = try object(key)
         if s.raw["ref"] != nil { return try s.ref("ref") }
         let pid = pid_t(try s.int("pid"))
-        guard NSRunningApplication(processIdentifier: pid) != nil else { throw HelperError.notFound("pid \(pid)") }
+        // NSRunningApplication の照会は前面化の直後などに一時的に失敗することがあるので、プロセスの存在は kill(0) で見る
+        guard kill(pid, 0) == 0 || errno == EPERM else { throw HelperError.notFound("pid \(pid)") }
         let app = AXElement.application(pid: pid)
         if let wn = s.optInt("windowNumber") {
             guard let w = app.elements(kAXWindowsAttribute).first(where: { $0.windowNumber == wn }) else {
@@ -194,6 +217,7 @@ extension Params {
         if let d = optInt("maxDepth") { o.maxDepth = d }
         if let n = optInt("maxNodes") { o.maxNodes = n }
         if let i = optBool("interestingOnly") { o.interestingOnly = i }
+        if let t = optInt("textLimit") { o.valueLimit = max(10, t) }   // 長文を読むときは上げる (既定 80)
         return o
     }
 }

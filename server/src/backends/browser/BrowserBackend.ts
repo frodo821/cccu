@@ -339,7 +339,7 @@ export class BrowserBackend implements Backend {
     const texts: string[] = [];
     let truncated = false;
     for (const n of forest) {
-      const r = render(n, { maxDepth: opts.maxDepth ?? 40, maxNodes: (opts.maxNodes ?? 800) - refs.size });
+      const r = render(n, { maxDepth: opts.maxDepth ?? 40, maxNodes: (opts.maxNodes ?? 800) - refs.size, valueLimit: opts.textLimit });
       const offset = refs.size;
       for (const [, v] of r.refs) refs.set(`e${refs.size + 1}`, toElementRef(v));
       texts.push(offset === 0 ? r.text : r.text.replace(/\[ref=e(\d+)\]/g, (_m, d) => `[ref=e${Number(d) + offset}]`));

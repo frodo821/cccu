@@ -83,7 +83,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 | method | params | result |
 |--------|--------|--------|
-| `ui.snapshot` | `{scope: Scope, maxDepth?: int, maxNodes?: int, interestingOnly?: boolean}` | `{snapshot: string, text: string, refCount: int, truncated: boolean}` |
+| `ui.snapshot` | `{scope: Scope, maxDepth?: int, maxNodes?: int, interestingOnly?: boolean, textLimit?: int}` | `{snapshot: string, text: string, refCount: int, truncated: boolean}` — `textLimit` は値・テキストの切り詰め長 (既定 80) |
 | `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int}` | `{snapshot, text, refCount}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ |
 | `ui.attributes` | `{ref: Ref, names?: string[]}` | `{attributes: {[AXName]: value}}` |
 | `ui.setAttribute` | `{ref: Ref, name: string, value: any}` | `{}` |
@@ -146,6 +146,9 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 - 1 行 1 ノード、インデント 2 スペース、`- role "title"` の順。title がなければ省略
 - ref は操作可能または識別に有用なノードにのみ付与。`e1` から連番
+- 名前も値も無い操作要素には `[at x,y wxh]` (画面座標) を添える。スクリーンショットと照合して役割を判断するため
+- 同じ行にある静的テキストの断片 (インライン装飾で分割されたもの) は 1 つに結合する。横に隙間があれば空白を挟む
+- 名前の不可視文字 (ゼロ幅スペース、BOM、私用領域のアイコン文字など) は除去し、空になれば無名として扱う
 - 状態フラグ: `[focused] [disabled] [selected] [checked] [expanded] [collapsed]`
 - 値は `: "…"` を末尾に。80 文字で切り詰め、末尾に `…`
 - `interestingOnly=true` (既定) では title も value も ref もない `group`/`generic` は子を親に繰り上げる

@@ -19,6 +19,11 @@ Browser notes
 - `cu_set_value` handles selects (by option value or label), checkboxes and inputs with proper input/change events. `cu_key` supports cmd+A/C/V/X/Z in text fields.
 - Content inside iframes (including cross-site ones) appears under the `iframe` node and can be acted on like anything else.
 
+Reading pages
+- Long text is cut at 80 characters. Pass `textLimit` (for example 400) to `cu_snapshot` / `cu_find` when you need to read a passage or an explanation.
+- Unnamed controls show `[at x,y wxh]` (screen coordinates). Take `cu_screenshot` of the window, map those coordinates onto the image (the screenshot result tells you the captured area and scale) and decide what the control does from its icon.
+- Clicking scrolls off-screen elements into view automatically, including elements inside scrollable panels. If a click still reports success but nothing changed, re-find the element and check its position with `cu_attributes` (`AXFrame`).
+
 Tips
 - Roles are lower-case AX roles without the prefix: `button`, `textfield`, `textarea`, `checkbox`, `popupbutton`, `menuitem`, `sheet`, `window`.
 - `cu_type` with a ref focuses the element and inserts text at the caret through the accessibility API. `clear: true` replaces the content, `submit: true` presses Enter afterwards.

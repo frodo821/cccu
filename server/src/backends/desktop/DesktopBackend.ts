@@ -42,7 +42,39 @@ export class DesktopBackend implements Backend {
     return t;
   }
   private async scope(target: string, within?: Ref) {
-    return within ? { ref: within } : scopeOf(await this.resolveTarget(target));
+    if (within) return { ref: within };
+    const t = await this.resolveTarget(target);
+    // ブラウザは既定でページ (webarea) に絞る。タブバーや拡張機能、メニューバーで ref が埋まるのを避ける。
+    // ブラウザ UI が必要なときは within にウィンドウの ref を渡す
+    if (t.kind === "app" && (await this.isBrowser(t.pid))) {
+      const page = await this.focusedWebArea(t.pid);
+      if (page) return { ref: page };
+    }
+    return scopeOf(t);
+  }
+
+  private static readonly BROWSER_BUNDLES = new Set([
+    "com.google.Chrome", "com.google.Chrome.canary", "com.apple.Safari", "com.microsoft.edgemac",
+    "com.brave.Browser", "company.thebrowser.Browser", "org.mozilla.firefox", "com.vivaldi.Vivaldi", "org.chromium.Chromium",
+  ]);
+  private bundleCache = new Map<number, string | undefined>();
+  private async isBrowser(pid: number): Promise<boolean> {
+    if (!this.bundleCache.has(pid)) {
+      const { apps } = await (await this.helper()).call("app.list", {});
+      for (const a of apps) this.bundleCache.set(a.pid, a.bundleId);
+    }
+    const b = this.bundleCache.get(pid);
+    return !!b && DesktopBackend.BROWSER_BUNDLES.has(b);
+  }
+
+  /** 最前面ウィンドウの webarea (フォーカス中のものを優先) の ref。見つからなければ undefined */
+  private async focusedWebArea(pid: number): Promise<Ref | undefined> {
+    const r = await (await this.helper()).call("ui.find", { scope: { pid }, query: { role: "webarea" }, maxNodes: 2000 });
+    const lines = r.text.split("\n").filter((l) => /^\s*- webarea\b/.test(l) && l.includes("[ref="));
+    // 入れ子の webarea (Chrome の新しいタブなど) は最初 = 最も外側を使う。フォーカス中のウィンドウのものを優先
+    const pick = lines.find((l) => l.includes("[focused]")) ?? lines[0];
+    if (!pick) return undefined;
+    return { snapshot: r.snapshot, ref: pick.split("[ref=")[1].split("]")[0] };
   }
 
   async listTargets(): Promise<TargetInfo[]> {
@@ -77,7 +109,7 @@ export class DesktopBackend implements Backend {
     return this.withPermissionRetry(async () => (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within), ...rest }));
   }
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within), query, maxNodes: opts.maxNodes });
+    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit });
   }
   async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs });
@@ -114,7 +146,7 @@ export class DesktopBackend implements Backend {
       const t = await this.resolveTarget(target);
       const params = t.kind === "window" ? { pid: t.pid, windowNumber: t.windowNumber } : t.kind === "app" ? { pid: t.pid } : {};
       const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth });
-      return { pngBase64: r.pngBase64, width: r.width, height: r.height };
+      return { pngBase64: r.pngBase64, width: r.width, height: r.height, frame: r.frame, scale: r.scale };
     });
   }
 

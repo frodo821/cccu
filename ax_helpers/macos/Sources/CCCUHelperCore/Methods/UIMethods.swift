@@ -66,7 +66,7 @@ public func registerUIMethods(_ d: Dispatcher) {
                 try act(el.pid, window: el.window, foreground: fg) { try el.perform(kAXPressAction) }
                 return ["method": fg ? "ax+foreground" : "ax"] as JSONObject
             }
-            guard let c = el.center else { throw HelperError(.unsupported, "element has no frame to click") }
+            guard let c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
                 try Input.click(at: c, button: button, count: count, modifiers: mods)
@@ -131,7 +131,7 @@ func focus(_ el: AXElement) throws {
         Thread.sleep(forTimeInterval: 0.05)
         if el.isFocused { return }
     }
-    guard let c = el.center else { throw HelperError(.unsupported, "element cannot be focused") }
+    guard let c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element cannot be focused") }
     try withForeground(el.pid, window: el.window) {
         try Input.click(at: c)
         Thread.sleep(forTimeInterval: 0.05)

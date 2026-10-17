@@ -71,7 +71,7 @@ export function buildTree(nodes: CDPAXNode[], frame?: unknown): AXNode | null {
       const f = stateProps[p.name];
       if (f) { const s = f(p.value.value); if (s) states.push(s); }
     }
-    let title = n.name?.value?.trim() || undefined;
+    let title = n.name?.value?.replace(/[\u200B-\u200D\u2060\uFEFF\u00A0\uE000-\uF8FF]/g, "").trim() || undefined;
     let value: AXNode["value"];
     const v = n.value?.value;
     if (role === "text") { if (!title && typeof v === "string") title = v; }
@@ -90,9 +90,21 @@ export function buildTree(nodes: CDPAXNode[], frame?: unknown): AXNode | null {
 
 const isBoring = (n: AXNode) => collapseRoles.has(n.role) && !n.title && n.value === undefined && !n.matched;
 
+/** 連続する葉の静的テキスト (インライン装飾で分割された断片) を 1 ノードにまとめる */
+function mergeTextRuns(children: AXNode[]): AXNode[] {
+  const out: AXNode[] = [];
+  for (const c of children) {
+    const last = out[out.length - 1];
+    const frag = (n: AXNode) => n.role === "text" && n.children.length === 0 && !n.matched && n.value === undefined && n.title !== undefined;
+    if (last && frag(c) && frag(last)) out[out.length - 1] = { ...last, title: last.title! + c.title! };
+    else out.push(c);
+  }
+  return out;
+}
+
 /** 子を整理する: 畳み込み + 親と同じ静的テキストの除去 (button "OK" > text "OK") */
 function tidyChildren(node: AXNode) {
-  node.children = node.children.flatMap(collapse);
+  node.children = mergeTextRuns(node.children.flatMap(collapse));
   if (node.title) node.children = node.children.filter((c) => !(c.role === "text" && c.title === node.title && !c.matched && c.children.length === 0));
 }
 
@@ -116,6 +128,8 @@ export function matcher(q: FindQuery): (n: AXNode) => boolean {
 
 /** ui.find: 一致ノード (子孫含む) とそこへ至る祖先だけ残す。無名ラッパーの祖先は畳む */
 export function prune(node: AXNode): AXNode[] {
+  // 葉の静的テキストだけが一致した場合は、前後の断片や隣の要素も必要なので親を一致として扱う
+  if (!node.matched && node.children.some((c) => c.matched && c.role === "text" && c.children.length === 0)) node.matched = true;
   if (node.matched) { tidyChildren(node); return [node]; }
   node.children = node.children.flatMap(prune);
   if (!node.children.length) return [];

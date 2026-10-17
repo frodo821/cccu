@@ -104,7 +104,7 @@ public enum SnapshotBuilder {
         var title = el.title
         if title == nil || title!.isEmpty { title = el.descriptionText }
         if (title == nil || title!.isEmpty), role == "link" || role == "image" { title = el.string("AXHelp") }
-        if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines) { title = t.isEmpty ? nil : t }
+        if let t = title.map(cleanName) { title = t.isEmpty ? nil : t }
 
         var value: Any? = nil
         var states: [String] = []
@@ -136,6 +136,13 @@ public enum SnapshotBuilder {
         return Node(element: el, role: role, title: title, value: value, states: states, actionable: actionable)
     }
 
+    /// 名前から不可視文字 (ゼロ幅スペース、BOM、単語結合子、NBSP など) と前後の空白を取り除く。
+    /// アイコンフォントのボタンは名前がこれらだけで構成されていることが多く、空扱いにしないと「無名」と判定できない
+    static let invisible = CharacterSet(charactersIn: "\u{200B}\u{200C}\u{200D}\u{2060}\u{FEFF}\u{00A0}\u{E000}-\u{F8FF}")
+    public static func cleanName(_ s: String) -> String {
+        String(String.UnicodeScalarView(s.unicodeScalars.filter { !invisible.contains($0) })).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     public static func normalizeRole(_ raw: String, subrole: String?) -> String {
         var r = raw.hasPrefix("AX") ? String(raw.dropFirst(2)) : raw
         if let s = subrole, s.hasPrefix("AX"), !s.isEmpty {
@@ -158,9 +165,13 @@ public enum SnapshotBuilder {
     /// interestingOnly: title/value/ref のない group/generic は子を親に繰り上げる
     static func collapse(_ node: Node) -> [Node] {
         node.children = node.children.flatMap(collapse)
+        // 無名で値も子も持たない静的テキスト (アイコンフォントなど) は情報が無いので落とす
+        node.children.removeAll { $0.role == "text" && $0.title == nil && $0.value == nil && $0.children.isEmpty && !$0.matched }
         if let t = node.title {
-            node.children.removeAll { $0.role == "text" && $0.title == t && !$0.matched && $0.children.isEmpty }
+            // 親の名前と同じ、または親の名前 (子テキストの連結であることが多い) に含まれる静的テキストの子は冗長なので落とす
+            node.children.removeAll { $0.role == "text" && !$0.matched && $0.children.isEmpty && ($0.title == t || (t.count > 20 && $0.title.map { t.contains($0) } == true)) }
         }
+        node.children = mergeTextRuns(node.children)
         let boring = ["group", "generic", "splitgroup", "layoutarea", "layoutitem", "unknown"].contains(node.role)
         if boring && node.title == nil && node.value == nil && !node.actionable && !node.matched {
             return node.children
@@ -168,8 +179,38 @@ public enum SnapshotBuilder {
         return [node]
     }
 
-    /// ui.find: 一致ノード (とその子孫) と、そこへ至る祖先だけを残す
+    /// 連続する葉の静的テキスト (インライン装飾で分割された文の断片) を 1 ノードに結合する。
+    /// 断片は元の文字列の部分文字列なので区切りを入れずにつなぐ
+    static func mergeTextRuns(_ children: [Node]) -> [Node] {
+        var out: [Node] = []
+        var lastFrame: CGRect? = nil
+        for c in children {
+            let isFragment = c.role == "text" && c.children.isEmpty && !c.matched && c.value == nil && c.title != nil
+            let frame = isFragment ? c.element.frame : nil
+            // 同じ行にある (縦方向に重なる) 断片だけを結合する。別の段落や見出し (下の行) は結合しない
+            if isFragment, let f = frame, let lf = lastFrame, let last = out.last, last.role == "text", last.children.isEmpty, !last.matched,
+               last.value == nil, let lt = last.title, let ct = c.title,
+               f.minY < lf.maxY, f.maxY > lf.minY, f.minX >= lf.minX - 2 {
+                // 横に隙間があれば別の語なので空白を挟む (隙間が無ければ 1 つの文字列の断片)
+                let gap = f.minX - lf.maxX
+                let sep = (gap > 3 && !lt.hasSuffix(" ") && !ct.hasPrefix(" ")) ? " " : ""
+                out[out.count - 1] = Node(element: last.element, role: "text", title: lt + sep + ct, value: nil, states: [], actionable: false)
+                lastFrame = lf.union(f)
+            } else {
+                out.append(c)
+                lastFrame = frame
+            }
+        }
+        return out
+    }
+
+    /// ui.find: 一致ノード (とその子孫) と、そこへ至る祖先だけを残す。
+    /// 葉の静的テキストだけが一致した場合は、前後の断片や隣の要素も必要なので親を一致として扱う
     static func prune(_ node: Node) -> Node? {
+        if !node.matched, node.children.contains(where: { $0.matched && $0.role == "text" && $0.children.isEmpty }),
+           ["group", "generic", "paragraph", "cell", "row", "listitem", "list", "heading"].contains(node.role) || node.title == nil {
+            node.matched = true
+        }
         if node.matched { node.children = node.children.flatMap(collapse); return node }
         node.children = node.children.compactMap(prune)
         return node.children.isEmpty ? nil : node
@@ -186,6 +227,10 @@ public enum SnapshotBuilder {
             line += " [ref=\(ref)]"
         }
         for s in node.states { line += " [\(s)]" }
+        if node.title == nil, node.value == nil, node.actionable, let f = node.element.frame, f.width > 0 {
+            // 無名の操作要素はスクリーンショットと座標で照合するしかないので、画面座標を添える
+            line += " [at \(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))]"
+        }
         if let v = node.value {
             if let s = v as? String { line += ": " + quote(s, limit: options.valueLimit) }
             else { line += ": \(v)" }
