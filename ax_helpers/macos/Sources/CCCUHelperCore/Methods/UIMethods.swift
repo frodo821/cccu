@@ -115,8 +115,9 @@ public func registerUIMethods(_ d: Dispatcher) {
                 }
                 var pressed = c
                 let recheckLogged: (CGPoint) -> CGPoint? = { pt in let r = recheck(pt); if let r = r { pressed = r; diag["recheckMoved"] = true }; return r }
-                diag["hitTries"] = tries; diag["frame2"] = el.frame ?? "nil"
-                try Input.click(at: c, size: el.frame?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheckLogged)
+                let framePress = el.frame
+                diag["hitTries"] = tries; diag["frame2"] = framePress ?? "nil"
+                try Input.click(at: c, size: framePress?.size, button: button, count: count, modifiers: mods, mode: pointer, recheck: recheckLogged)
                 // 押下後の確認: AX の frame はスクロール直後に描画より遅れて更新されるので、押した点が (更新後の) frame の外に
                 // 出ていたら、押下は別の場所に落ちている。その場合だけ新しい中心でもう 1 回押す
                 spin(0.15)
@@ -125,7 +126,13 @@ public func registerUIMethods(_ d: Dispatcher) {
                 diag["frame3"] = after ?? "nil"
                 diag["focusedAfter"] = el.isFocused || (el.element(kAXParentAttribute)?.isFocused ?? false)
                 diag["hitAfter"] = elementAt(pressed).map { "\($0.role ?? "?") \($0.title ?? "")" } ?? "nil"
-                if let a = after, a.width > 2, a.height > 2, !a.insetBy(dx: -1, dy: -1).contains(pressed), count == 1 {
+                // 判定: 押下後に frame が動いていて、かつ押下点が (3px 内側まで含めて) frame に入っていないか、押下点のヒットテストが対象と無関係。
+                // 端ぎりぎり (下端から 2px) に押していて frame の中には入っていたが、実際は別の要素に落ちていたケースがあった
+                let moved = after.map { a in framePress.map { hypot(a.origin.x - $0.origin.x, a.origin.y - $0.origin.y) > 1 } ?? true } ?? false
+                let outside = after.map { !$0.insetBy(dx: 3, dy: 3).contains(pressed) } ?? false
+                let hitUnrelated = elementAt(pressed).map { !$0.isRelated(to: el) } ?? false
+                diag["moved"] = moved
+                if let a = after, a.width > 2, a.height > 2, moved, outside || hitUnrelated, count == 1 {
                     let c2 = CGPoint(x: a.midX, y: a.midY)
                     if let h = elementAt(c2), h.isRelated(to: el) {
                         try Input.click(at: c2, size: a.size, button: button, count: 1, modifiers: mods, mode: pointer)

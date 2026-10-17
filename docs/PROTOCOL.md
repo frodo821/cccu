@@ -201,7 +201,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
-- 1.12: `Scope` に `{pid, webarea: true}` (最前面ウィンドウの最も外側の AXWebArea。読み込み直後は最大 1 秒待つ)。`ui.click` は押下後に押下点が要素の frame の外に出ていれば新しい中心で 1 回だけ押し直し、`method` に明記。`AXScrollToVisible` 後に最低 0.3 秒待つ。`ui.query` の `:has()` に相対結合子 (`:has(> X)` など)
+- 1.12: `Scope` に `{pid, webarea: true}` (最前面ウィンドウの最も外側の AXWebArea。読み込み直後は最大 1 秒待つ)。`ui.click` は押下後に frame が動いていて、押下点が frame の 3px 内側に入っていないか押下点のヒットテストが対象と無関係なら、新しい中心で 1 回だけ押し直し、`method` に明記。`AXScrollToVisible` 後に最低 0.3 秒待つ。`ui.query` の `:has()` に相対結合子 (`:has(> X)` など)
 - 1.11: `ui.query` (CSS セレクタ風の構造クエリ)
 - 1.10: 操作セッション `session.begin` / `session.extend` / `session.end` / `session.status` (対象アプリを前面に保ち、ユーザーの実入力を遮断。`maxSeconds` 必須、Escape 3 連打で終了)。ユーザー入力との競合対策 (`CCCU_USER_GUARD=block|wait|off`): 合成入力の間だけ実入力を遮断し、遮断・重なりがあれば結果に `warning`。`BUSY` エラー。合成イベントのソースを `.combinedSessionState` に
 - 1.9: `input.type` に `pid` (そのアプリのフォーカス要素へ入力)。可視判定をウィンドウではなく最寄りの webarea / scrollarea の表示範囲で行い、小さい要素は全体が入っていることを要求。`AXScrollToVisible` で端に寄っただけなら実スクロールで寄せ、1x1 の仮 frame のままなら frame のある祖先の中心を押す。文字サイズの違う断片は空白で区切る
