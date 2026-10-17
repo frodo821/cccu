@@ -7,6 +7,7 @@ public struct SnapshotOptions {
     public var maxNodes = 800
     public var interestingOnly = true
     public var valueLimit = 80
+    public var skipWebContent = false   // ブラウザ UI だけが要るとき、webarea の中身を出さない (ページが巨大だと予算を食い潰すため)
     public init() {}
 }
 
@@ -28,6 +29,7 @@ final class Node {
     let actionable: Bool
     var children: [Node] = []
     var matched = false       // ui.find 用
+    var rawTitle: String?     // 静的テキストの元の文字列 (前後の空白を保持)。隣の断片と結合するときの区切り判定用
     var ref: String?
     /// 子の葉テキストを連結した文字列 (装飾で分割された文に対する検索用)
     var blockText: String { children.filter { $0.role == "text" && $0.children.isEmpty }.compactMap { $0.title }.joined() }
@@ -72,7 +74,7 @@ public enum SnapshotBuilder {
             // 名前のない静的テキスト (アイコンフォントのグリフ、空文字列) は情報がないので出さない
             if role == "text", node.title == nil, node.value == nil, !node.actionable { return nil }
 
-            if depth < options.maxDepth && !leafRoles.contains(role) {
+            if depth < options.maxDepth && !leafRoles.contains(role) && !(options.skipWebContent && role == "webarea") {
                 for child in el.children {
                     if let n = walk(child, depth: depth + 1) { node.children.append(n) }
                     if count >= options.maxNodes { truncated = true; break }
@@ -127,6 +129,7 @@ public enum SnapshotBuilder {
     }
 
     static func makeNode(_ el: AXElement, role: String, options: SnapshotOptions) -> Node {
+        var rawTitle: String? = nil
         var title = el.title
         if title == nil || title!.isEmpty { title = el.descriptionText }
         if (title == nil || title!.isEmpty), role == "link" || role == "image" { title = el.string("AXHelp") }
@@ -141,7 +144,7 @@ public enum SnapshotBuilder {
             else if let b = v as? Bool { states.append(b ? "checked" : "unchecked") }
         case "text":
             // 静的テキストは title がなければ value を title 扱いにする (アイコングリフだけなら無名のまま)
-            if title == nil, let s = v as? String { let c = cleanName(s); title = c.isEmpty ? nil : c }
+            if title == nil, let s = v as? String { let c = cleanName(s); title = c.isEmpty ? nil : c; rawTitle = c.isEmpty ? nil : stripInvisible(s) }
         default:
             if let s = v as? String { if !s.isEmpty { value = s } }
             else if let n = v as? Double { value = n == n.rounded() ? Int(n) : n }
@@ -159,7 +162,14 @@ public enum SnapshotBuilder {
             || actions.contains(where: { $0 != "AXScrollToVisible" && $0 != "AXShowMenu" && !(container && $0 == "AXPress") })
             || (el.isSettable(kAXValueAttribute) && !container)
             || (el.isSettable(kAXFocusedAttribute) && !container)   // Chrome は全 group にフォーカス設定可を付ける
-        return Node(element: el, role: role, title: title, value: value, states: states, actionable: actionable)
+        let node = Node(element: el, role: role, title: title, value: value, states: states, actionable: actionable)
+        node.rawTitle = rawTitle
+        return node
+    }
+
+    /// 不可視文字だけを除く (空白はそのまま)
+    static func stripInvisible(_ s: String) -> String {
+        String(String.UnicodeScalarView(s.unicodeScalars.filter { !invisible.contains($0) }))
     }
 
     /// 名前から不可視文字 (ゼロ幅スペース、BOM、単語結合子、NBSP など) と前後の空白を取り除く。
@@ -170,7 +180,7 @@ public enum SnapshotBuilder {
         return set
     }()
     public static func cleanName(_ s: String) -> String {
-        String(String.UnicodeScalarView(s.unicodeScalars.filter { !invisible.contains($0) })).trimmingCharacters(in: .whitespacesAndNewlines)
+        stripInvisible(s).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public static func normalizeRole(_ raw: String, subrole: String?) -> String {
@@ -221,10 +231,13 @@ public enum SnapshotBuilder {
             if isFragment, let f = frame, let lf = lastFrame, let last = out.last, last.role == "text", last.children.isEmpty, !last.matched,
                last.value == nil, let lt = last.title, let ct = c.title,
                f.minY < lf.maxY, f.maxY > lf.minY, f.minX >= lf.minX - 2 {
-                // 横に隙間があれば別の語なので空白を挟む (隙間が無ければ 1 つの文字列の断片)
+                // 元の文字列のどちらかが空白で接していれば語の切れ目。そうでなくても横に隙間があれば別の語 (インライン装飾で分割された "may" + "disagree")
                 let gap = f.minX - lf.maxX
-                let sep = (gap > 3 && !lt.hasSuffix(" ") && !ct.hasPrefix(" ")) ? " " : ""
-                out[out.count - 1] = Node(element: last.element, role: "text", title: lt + sep + ct, value: nil, states: [], actionable: false)
+                let touchesSpace = (last.rawTitle ?? lt).last.map { $0.isWhitespace } ?? false || (c.rawTitle ?? ct).first.map { $0.isWhitespace } ?? false
+                let sep = (touchesSpace || gap > 2) ? " " : ""
+                let merged = Node(element: last.element, role: "text", title: lt + sep + ct, value: nil, states: [], actionable: false)
+                merged.rawTitle = (last.rawTitle ?? lt) + sep + (c.rawTitle ?? ct)
+                out[out.count - 1] = merged
                 lastFrame = lf.union(f)
             } else {
                 out.append(c)
@@ -258,7 +271,7 @@ public enum SnapshotBuilder {
 
     static func render(_ node: Node, indent: Int, lines: inout [String], refs: inout [String: AXElement], counter: inout Int, options: SnapshotOptions) {
         var line = String(repeating: "  ", count: indent) + "- " + node.role
-        if let t = node.title { line += " " + quote(t, limit: options.valueLimit) }
+        if let t = node.title { line += " " + quote(t, limit: node.role == "text" ? options.valueLimit : max(options.valueLimit, 80)) }   // textLimit は本文用。要素名は 80 未満に切らない
         if node.actionable || node.matched {
             counter += 1
             let ref = "e\(counter)"

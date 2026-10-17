@@ -85,7 +85,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 | method | params | result |
 |--------|--------|--------|
 | `ui.snapshot` | `{scope: Scope, maxDepth?: int, maxNodes?: int, interestingOnly?: boolean, textLimit?: int}` | `{snapshot: string, text: string, refCount: int, truncated: boolean}` — `textLimit` は値・テキストの切り詰め長 (既定 80) |
-| `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int, textLimit?: int}` | `{snapshot, text, refCount, matches}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ。`matches` は一致数 (祖先に付く ref は含まない) |
+| `ui.find` | `{scope: Scope, query: FindQuery, maxNodes?: int, textLimit?: int, skipWebContent?: bool}` | `{snapshot, text, refCount, matches}` — 一致要素 (子孫を含む) とそこへ至る祖先のみ。`matches` は一致数 (祖先に付く ref は含まない) |
 | `ui.attributes` | `{ref: Ref, names?: string[]}` | `{attributes: {[AXName]: value}}` |
 | `ui.setAttribute` | `{ref: Ref, name: string, value: any}` | `{}` |
 | `ui.performAction` | `{ref: Ref, action: string}` | `{}` — `AXPress` など AX アクション名そのまま |
@@ -163,7 +163,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 - `ui.find` の結果には、一致要素の直前の見出し (同じ親の中) を文脈として残す (設問番号など)
 - `title` の一致は要素名のほか、role 指定が無ければ「子の葉テキストを連結した文字列」にも適用する (装飾で分割された文を 1 つの文字列として検索できる)
 - 画面外の操作要素 (幅または高さ 0 の仮の frame) は名前の有無にかかわらず `[offscreen]`
-- 同じ行にある静的テキストの断片 (インライン装飾で分割されたもの) は 1 つに結合する。横に隙間があれば空白を挟む
+- 同じ行にある静的テキストの断片 (インライン装飾で分割されたもの) は 1 つに結合する。元の文字列が空白で接しているか、横に隙間があれば空白を挟む
 - 名前の不可視文字 (ゼロ幅スペース、BOM、私用領域のアイコン文字など) は除去し、空になれば無名として扱う
 - 状態フラグ: `[focused] [disabled] [selected] [checked] [expanded] [collapsed]`
 - 値は `: "…"` を末尾に。80 文字で切り詰め、末尾に `…`
@@ -185,6 +185,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.8: `ui.snapshot` / `ui.find` / `ui.waitFor` に `skipWebContent` (webarea の中身を省く)。静的テキスト断片の結合で元の文字列の空白を見て語の切れ目を判定。`textLimit` は本文 (text) にだけ適用し要素名は 80 未満に切らない
 - 1.7: `ui.waitFor` のタイムアウトに `lastSnapshot` (最後に見えていたツリー、ref なし) と `matches` を添える。`input.scroll` は画面外の要素を基点にすると可視の祖先を使い `anchor` を返す。`truncatedBy`。ref 表を 200 に拡大。一致数を末端優先に。無名の静的テキストを省く。ヒットテストで対象の frame に収まる要素は対象の一部とみなす (ブラウザ UI の無名 group による `OBSTRUCTED` 誤検知の回避)。スクロール後の frame 安定判定を連続 2 回に
 - 1.6: 実クリック前のヒットテストと `OBSTRUCTED` エラー、`ui.click` の `force`
 - 1.5: フィッツの法則によるポインタ移動とトラックパッド風スクロール、`pointer` パラメータ

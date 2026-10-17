@@ -279,6 +279,7 @@ extension Params {
         if let n = optInt("maxNodes") { o.maxNodes = n }
         if let i = optBool("interestingOnly") { o.interestingOnly = i }
         if let t = optInt("textLimit") { o.valueLimit = max(10, t) }   // 長文を読むときは上げる (既定 80)
+        if let w = optBool("skipWebContent") { o.skipWebContent = w }
         return o
     }
 }

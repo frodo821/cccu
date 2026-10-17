@@ -22,8 +22,15 @@ const fail = (e: unknown): ToolResult => {
   }
   return { content: [{ type: "text", text: msg }], isError: true };
 };
-const snap = (r: SnapshotResult): ToolResult =>
-  text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${r.truncated ? (r.truncatedBy === "depth" ? " (subtrees cut at maxDepth: raise maxDepth or narrow the scope with within)" : " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)") : ""}\n${r.text}`);
+const snap = (r: SnapshotResult, isFind = false): ToolResult => {
+  let note = "";
+  if (r.truncated) {
+    note = r.truncatedBy === "depth" ? " (subtrees cut at maxDepth: raise maxDepth or narrow the scope with within)"
+      : isFind ? " (search stopped at the maxNodes budget before covering the whole tree: raise maxNodes or narrow the scope with within)"
+      : " (truncated at the maxNodes budget: raise maxNodes, narrow the scope with within, or use cu_find)";
+  }
+  return text(`snapshot=${r.snapshot} refs=${r.refCount}${r.matches !== undefined ? ` matches=${r.matches}` : ""}${note}\n${r.text}`);
+};
 
 const modifiers = z.array(z.enum(["cmd", "shift", "alt", "ctrl", "fn"])).optional();
 const refArg = z.string().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser)');
@@ -33,7 +40,7 @@ const foregroundArg = z.boolean().optional().describe("Desktop: retry an action 
 const textLimitArg = z.number().int().optional().describe("Max characters per text/value before truncation (default 80). Raise it to read passages");
 const pointerArg = z.enum(["human", "warp"]).optional().describe("Desktop: how the cursor travels for a real click/scroll. Default human (Fitts's-law motion); warp jumps instantly");
 const withinArg = z.string().optional().describe('Limit to the subtree of this snapshot ref (e.g. "s3/e5"), not a target id. Browser apps are scoped to the page by default; to see tabs or the address bar use target "window:<pid>:<n>" or scope "app" instead');
-const scopeArg = z.enum(["page", "app"]).optional().describe('Desktop browsers only: "page" (default) limits to the web content; "app" shows the whole application (menu bar, windows, tab strip)');
+const scopeArg = z.enum(["page", "app"]).optional().describe('Desktop browsers only: "page" (default) limits to the web content; "app" shows the application UI (menu bar, windows, tab strip, address bar) without the page content');
 
 /** MCP ツール層。target / ref から backend を選ぶだけで、ロジックは持たない。 */
 export function registerTools(server: McpServer, ctx: ToolContext) {
@@ -91,8 +98,8 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_find",
     { description: "Find elements by role and/or text within a target; returns matches (with their contents) and ancestors. Cheaper than a full snapshot.",
-      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, ...findShape, exact: z.boolean().optional(), textLimit: textLimitArg } },
-    ({ target, within, scope, textLimit, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined, scope, textLimit }))));
+      inputSchema: { target: targetArg, within: withinArg, scope: scopeArg, ...findShape, exact: z.boolean().optional(), textLimit: textLimitArg, maxNodes: z.number().int().optional().describe("Search budget in nodes (default 5000)") } },
+    ({ target, within, scope, textLimit, maxNodes, ...q }) => run(async () => snap(await byTarget(target).find(target, toQuery(q), { within: within ? parseRef(within) : undefined, scope, textLimit, maxNodes }), true)));
 
   server.registerTool("cu_wait",
     { description: "Wait until an element appears (exists) / disappears (gone) or the UI settles (stableMs), then return a snapshot.",

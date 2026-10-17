@@ -59,10 +59,10 @@ export interface Methods {
   "window.list": { params: { pid?: number }; result: { windows: WindowInfo[] } };
   "window.raise": { params: { pid: number; windowNumber: number }; result: Record<string, never> };
   "ui.snapshot": {
-    params: { scope: Scope; maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; textLimit?: number };
+    params: { scope: Scope; maxDepth?: number; maxNodes?: number; interestingOnly?: boolean; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
-  "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number; textLimit?: number }; result: SnapshotResult };
+  "ui.find": { params: { scope: Scope; query: FindQuery; maxNodes?: number; textLimit?: number; skipWebContent?: boolean }; result: SnapshotResult };
   "ui.attributes": { params: { ref: Ref; names?: string[] }; result: { attributes: Record<string, unknown> } };
   "ui.setAttribute": { params: { ref: Ref; name: string; value: unknown }; result: Record<string, never> };
   "ui.performAction": { params: { ref: Ref; action: string }; result: Record<string, never> };
@@ -72,7 +72,7 @@ export interface Methods {
   };
   "ui.focus": { params: { ref: Ref }; result: Record<string, never> };
   "ui.waitFor": {
-    params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number };
+    params: { scope: Scope; condition: { exists: FindQuery; count?: number } | { gone: FindQuery } | { stable: number }; timeoutMs: number; textLimit?: number; skipWebContent?: boolean };
     result: SnapshotResult;
   };
   "input.type": { params: { ref?: Ref; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean }; result: { method: string } };

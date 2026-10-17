@@ -52,6 +52,12 @@ export class DesktopBackend implements Backend {
     }
     return scopeOf(t);
   }
+  /** scope: "app" のブラウザではページの中身を省く (巨大なページが maxNodes を食い潰してタブ列が出なくなるため) */
+  private async extraOptions(target: string, scope?: BrowserScope): Promise<{ skipWebContent?: boolean }> {
+    if (scope !== "app") return {};
+    const t = await this.resolveTarget(target);
+    return t.kind === "app" && (await this.isBrowser(t.pid)) ? { skipWebContent: true } : {};
+  }
 
   private static readonly BROWSER_BUNDLES = new Set([
     "com.google.Chrome", "com.google.Chrome.canary", "com.apple.Safari", "com.microsoft.edgemac",
@@ -106,10 +112,10 @@ export class DesktopBackend implements Backend {
 
   async snapshot(target: string, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
     const { within, scope, ...rest } = opts;
-    return this.withPermissionRetry(async () => (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within, scope), ...rest }));
+    return this.withPermissionRetry(async () => (await this.helper()).call("ui.snapshot", { scope: await this.scope(target, within, scope), ...rest, ...(await this.extraOptions(target, scope)) }));
   }
   async find(target: string, query: FindQuery, opts: SnapshotOptions = {}): Promise<SnapshotResult> {
-    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within, opts.scope), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit });
+    return (await this.helper()).call("ui.find", { scope: await this.scope(target, opts.within, opts.scope), query, maxNodes: opts.maxNodes, textLimit: opts.textLimit, ...(await this.extraOptions(target, opts.scope)) });
   }
   async waitFor(target: string, condition: WaitCondition, timeoutMs: number, within?: Ref, textLimit?: number): Promise<SnapshotResult> {
     return (await this.helper()).call("ui.waitFor", { scope: await this.scope(target, within), condition, timeoutMs, textLimit });
