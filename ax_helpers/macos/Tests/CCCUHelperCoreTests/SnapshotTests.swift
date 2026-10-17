@@ -261,3 +261,24 @@ final class ChangeReportTests: XCTestCase {
         XCTAssertEqual(ChangeReport.stripRefs("- button \"x\" [ref=e12] [disabled]"), "- button \"x\" [disabled]")
     }
 }
+
+
+final class GridTests: XCTestCase {
+    func testGridDrawsLinesAtScreenCoordinates() {
+        // 200x100 の白い画像が画面の (1000,500) から 400x200 を写している (scale 0.5) とする
+        let ctx = CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
+        let base = ctx.makeImage()!
+        let out = drawGrid(on: base, frame: CGRect(x: 1000, y: 500, width: 400, height: 200), spacing: 100)
+        XCTAssertEqual(out.width, 200); XCTAssertEqual(out.height, 100)
+        func pixel(_ x: Int, _ y: Int) -> (UInt8, UInt8, UInt8) {
+            let data = out.dataProvider!.data!; let ptr = CFDataGetBytePtr(data)!
+            let i = y * out.bytesPerRow + x * 4
+            return (ptr[i], ptr[i + 1], ptr[i + 2])
+        }
+        // 画面 x=1100 → 画像 x=50 に縦線 (白ではない)。x=1150 → 画像 x=75 は線なし (ラベル帯の外、画像中央)
+        let onLine = pixel(50, 50), offLine = pixel(75, 50)
+        XCTAssertTrue(onLine.1 < 250, "line pixel should be tinted: \(onLine)")
+        XCTAssertTrue(offLine == (255, 255, 255), "off-line pixel should stay white: \(offLine)")
+    }
+}

@@ -149,6 +149,10 @@ export class DesktopBackend implements Backend {
     const lines = [...(c.addedLines ?? []).map((l) => "+ " + l.trimStart()), ...(c.removedLines ?? []).map((l) => "- " + l.trimStart())];
     return `changes (snapshot=${c.snapshot} refs=${c.refCount}): +${c.added} -${c.removed}\n${lines.join("\n")}`;
   }
+  async clickAt(x: number, y: number, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; pointer?: "human" | "warp" }): Promise<string> {
+    const r = await (await this.helper()).call("ui.click", { point: { x, y }, ...opts });
+    return DesktopBackend.withWarning(r.method, r);
+  }
   async click(ref: Ref, opts: { button?: "left" | "right"; count?: number; modifiers?: Modifier[]; foreground?: boolean; pointer?: "human" | "warp"; force?: boolean } & ActionReportOptions): Promise<string> {
     const r = await (await this.helper()).call("ui.click", { ref, ...opts });
     return DesktopBackend.withWarning(r.method, r);
@@ -222,13 +226,13 @@ export class DesktopBackend implements Backend {
     const r = await (await this.helper()).call("ui.performAction", { ref, action, ...opts });
     return DesktopBackend.withWarning("ok", r);
   }
-  async screenshot(target: string, opts: { maxWidth?: number } = {}) {
+  async screenshot(target: string, opts: { maxWidth?: number; grid?: number } = {}) {
     return this.withPermissionRetry(async () => {
       const h = await this.helper();
       if (!h.has("screen.capture")) throw new HelperError("UNSUPPORTED", "helper does not support screen.capture (rebuild ax_helpers/macos)");
       const t = await this.resolveTarget(target);
       const params = t.kind === "window" ? { pid: t.pid, windowNumber: t.windowNumber } : t.kind === "app" ? { pid: t.pid } : {};
-      const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth });
+      const r = await h.call("screen.capture", { ...params, maxWidth: opts.maxWidth, grid: opts.grid });
       return { pngBase64: r.pngBase64, width: r.width, height: r.height, frame: r.frame, scale: r.scale };
     });
   }

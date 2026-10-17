@@ -38,7 +38,11 @@ public func registerScreenMethods(_ d: Dispatcher) {
             guard let img = CGDisplayCreateImage(displayID) else { throw HelperError.notFound("display") }
             image = img; frame = CGDisplayBounds(displayID)
         }
-        let scaled = downscale(image, maxWidth: maxWidth)
+        var scaled = downscale(image, maxWidth: maxWidth)
+        // 座標グリッド: AX ツリーが壊れているときに、画像から画面座標を読み取ってクリックするためのフォールバック
+        if let grid = p.optInt("grid"), grid >= 20 {
+            scaled = drawGrid(on: scaled, frame: frame, spacing: CGFloat(grid))
+        }
         guard let png = pngData(scaled) else { throw HelperError(.internalError, "PNG encoding failed") }
         return [
             "pngBase64": png.base64EncodedString(),
@@ -47,6 +51,44 @@ public func registerScreenMethods(_ d: Dispatcher) {
             "width": scaled.width, "height": scaled.height,
         ] as JSONObject
     }
+}
+
+/// 画面座標のグリッド線とラベルを描く。`frame` は画像が写している画面領域、ラベルは画面座標 (スナップショットの `[at x,y]` と同じ系)
+func drawGrid(on image: CGImage, frame: CGRect, spacing: CGFloat) -> CGImage {
+    let w = image.width, h = image.height
+    guard frame.width > 0, frame.height > 0,
+          let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return image }
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    let sx = CGFloat(w) / frame.width, sy = CGFloat(h) / frame.height
+    // CGContext は左下原点。画面座標 (左上原点) の y を画像の y に変換する
+    func ix(_ x: CGFloat) -> CGFloat { (x - frame.minX) * sx }
+    func iy(_ y: CGFloat) -> CGFloat { CGFloat(h) - (y - frame.minY) * sy }
+    ctx.setStrokeColor(CGColor(red: 1, green: 0, blue: 0.8, alpha: 0.55))
+    ctx.setLineWidth(1)
+    let font = CTFontCreateWithName("Menlo" as CFString, 11, nil)
+    func label(_ text: String, at p: CGPoint) {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+        let bounds = CTLineGetBoundsWithOptions(line, [])
+        ctx.setFillColor(CGColor(red: 0.6, green: 0, blue: 0.5, alpha: 0.85))
+        ctx.fill(CGRect(x: p.x, y: p.y - 2, width: bounds.width + 4, height: bounds.height + 3))
+        ctx.textPosition = CGPoint(x: p.x + 2, y: p.y)
+        CTLineDraw(line, ctx)
+    }
+    var x = (frame.minX / spacing).rounded(.up) * spacing
+    while x <= frame.maxX {
+        ctx.move(to: CGPoint(x: ix(x), y: 0)); ctx.addLine(to: CGPoint(x: ix(x), y: CGFloat(h))); ctx.strokePath()
+        label("\(Int(x))", at: CGPoint(x: ix(x) + 1, y: CGFloat(h) - 14))
+        x += spacing
+    }
+    var y = (frame.minY / spacing).rounded(.up) * spacing
+    while y <= frame.maxY {
+        ctx.move(to: CGPoint(x: 0, y: iy(y))); ctx.addLine(to: CGPoint(x: CGFloat(w), y: iy(y))); ctx.strokePath()
+        label("\(Int(y))", at: CGPoint(x: 1, y: iy(y) - 13))
+        y += spacing
+    }
+    return ctx.makeImage() ?? image
 }
 
 func downscale(_ image: CGImage, maxWidth: Int) -> CGImage {

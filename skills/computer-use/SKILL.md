@@ -26,6 +26,7 @@ Browser notes
 
 Reading pages
 - Long text is cut at 80 characters. Pass `textLimit` (for example 400) to `cu_snapshot` / `cu_find` when you need to read a passage or an explanation.
+- When the accessibility tree is unusable (empty webarea, canvas apps, remote desktops), fall back to vision: `cu_screenshot target=window:<pid>:<n> grid=100` overlays labelled screen-coordinate lines; read the target's coordinates off the image and `cu_click x=… y=…` (desktop). Verify with another screenshot or snapshot afterwards.
 - Unnamed controls show `[at x,y wxh]` (screen coordinates). Take `cu_screenshot` of the window, map those coordinates onto the image (the screenshot result tells you the captured area and scale) and decide what the control does from its icon.
 - Clicking scrolls off-screen elements into view automatically, including elements inside scrollable panels. If a click still reports success but nothing changed, click the same ref again (a smooth scroll that was still running can swallow the press), then verify.
 - `cu_scroll` with a ref that is off-screen scrolls at its nearest visible ancestor instead (the result says so). Prefer a ref that is visible, such as the page or a visible heading.

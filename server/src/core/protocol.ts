@@ -91,8 +91,9 @@ export interface Methods {
     params: { point: Point; action: "move" | "down" | "up" | "drag"; to?: Point; button?: "left" | "right" };
     result: Record<string, never>;
   };
-  "screen.capture": {
-    params: { pid?: number; windowNumber?: number; display?: number; maxWidth?: number };
+  "screen.capture": { // grid: 画面座標のグリッド線の間隔 (px)。省略で無し
+
+    params: { pid?: number; windowNumber?: number; display?: number; maxWidth?: number; grid?: number};
     result: { pngBase64: string; scale: number; frame: Rect; width: number; height: number };
   };
   "ui.observe": { params: { pid: number; notifications?: string[]; ref?: Ref }; result: { subscription: string; notifications: string[] } };

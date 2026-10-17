@@ -122,8 +122,17 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_click",
     { description: "Click an element (accessibility press when possible, otherwise a real click at its center). Runs in the background by default; if the UI did not change, retry with foreground: true. A real click fails with OBSTRUCTED when something else (a modal, a scrim) covers the point: act on that element instead, or pass force: true.",
-      inputSchema: { ref: refArg, button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg, force: z.boolean().optional().describe("Desktop: click even if the point is covered by another element (an OBSTRUCTED error told you what covers it)"), report: reportArg, textLimit: textLimitArg } },
-    ({ ref, report = "diff", ...opts }) => run(async () => { const [b, r] = byRef(ref); return text(`clicked ${ref} via ${await b.click(r, { ...opts, report: b.kind === "desktop" ? report : undefined })}`); }));
+      inputSchema: { ref: refArg.optional().describe('Element ref from a snapshot, e.g. "s3/e12" (desktop) or "b2/e5" (browser). Omit it and pass x,y to click a screen point (desktop fallback, e.g. read from a cu_screenshot with grid)'), x: z.number().optional(), y: z.number().optional().describe("Desktop: screen coordinates to click when no ref is usable"), button: z.enum(["left", "right"]).optional(), count: z.number().int().min(1).max(3).optional(), modifiers, foreground: foregroundArg, pointer: pointerArg, force: z.boolean().optional().describe("Desktop: click even if the point is covered by another element (an OBSTRUCTED error told you what covers it)"), report: reportArg, textLimit: textLimitArg } },
+    ({ ref, x, y, report = "diff", ...opts }) => run(async () => {
+      if (!ref) {
+        if (x === undefined || y === undefined) throw new HelperError("INVALID_PARAMS", "cu_click needs ref, or x and y");
+        const b = ctx.backends.find((b) => b.kind === "desktop" && b.clickAt);
+        if (!b?.clickAt) throw new HelperError("UNSUPPORTED", "point clicks need the desktop backend");
+        const { foreground: _f, force: _force, textLimit: _t, ...rest } = opts;
+        return text(`clicked ${x},${y} via ${await b.clickAt(x, y, rest)}`);
+      }
+      const [b, r] = byRef(ref); return text(`clicked ${ref} via ${await b.click(r, { ...opts, report: b.kind === "desktop" ? report : undefined })}`);
+    }));
 
   server.registerTool("cu_type",
     { description: "Type text into an element (focuses it first). Without ref, types into whatever has focus. clear replaces existing text; submit presses Enter afterwards.",
@@ -181,10 +190,10 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
 
   server.registerTool("cu_screenshot",
     { description: "Screenshot of a target (window, app's main window, or tab) as an image. Supplementary: prefer cu_snapshot for reading UI; use this to check visual state. Desktop capture needs Screen Recording permission.",
-      inputSchema: { target: targetArg.optional().describe("Omit for the main display (desktop)"), maxWidth: z.number().int().optional().describe("Downscale to this width (default 1600, desktop only)") } },
-    ({ target, maxWidth }) => run(async () => {
+      inputSchema: { target: targetArg.optional().describe("Omit for the main display (desktop)"), maxWidth: z.number().int().optional().describe("Downscale to this width (default 1600, desktop only)"), grid: z.number().int().min(20).optional().describe("Desktop: overlay a coordinate grid every N screen px with labels, so you can read screen coordinates off the image and click them with cu_click x,y when the accessibility tree is unusable (100 is a good default)") } },
+    ({ target, maxWidth, grid }) => run(async () => {
       const b = target ? byTarget(target) : ctx.backends[0];
-      const r = await b.screenshot(target ?? "", { maxWidth });
+      const r = await b.screenshot(target ?? "", { maxWidth, grid });
       const geo = r.frame
         ? ` | captured area at screen ${Math.round(r.frame.x)},${Math.round(r.frame.y)} ${Math.round(r.frame.w)}x${Math.round(r.frame.h)}; image px = (screen - origin) * ${(r.scale ?? 1).toFixed(3)}. Element [at x,y] hints in snapshots use screen coordinates`
         : "";
