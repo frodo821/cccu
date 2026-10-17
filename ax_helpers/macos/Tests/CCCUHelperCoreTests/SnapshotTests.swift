@@ -295,3 +295,24 @@ final class GridTests: XCTestCase {
         XCTAssertTrue(offLine == (255, 255, 255), "off-line pixel should stay white: \(offLine)")
     }
 }
+
+
+final class RefPathAndNoiseTests: XCTestCase {
+    func testRefTableKeepsPaths() {
+        let t = RefTable()
+        let el = AXElement.systemWide
+        let id = t.register(["e1": el], paths: ["e1": RefPath(root: el, indices: [0, 3], role: "AXButton", title: "Go")])
+        XCTAssertEqual(t.path(snapshot: id, ref: "e1")?.indices, [0, 3])
+        XCTAssertNil(t.path(snapshot: id, ref: "e2"))
+    }
+    func testTextRechunkingIsDroppedFromDiffs() {
+        let d = (added: ["  - text \"レッスンの重要表現を確認しましょう。nounanimal welfare\"", "  - button [ref=e7]"],
+                 removed: ["  - text \"レッスンの重要表現を確認しましょう。\"", "  - text \"noun\"", "  - text \"animal welfare\"", "  - button [disabled]"])
+        let r = ChangeReport.dropTextRechunking(d)
+        XCTAssertEqual(r.added, ["  - button [ref=e7]"])
+        XCTAssertEqual(r.removed, ["  - button [disabled]"])
+        // 本当に新しいテキストは残る
+        let d2 = (added: ["  - text \"正解は A\""], removed: ["  - text \"問題\""])
+        XCTAssertEqual(ChangeReport.dropTextRechunking(d2).added.count, 1)
+    }
+}

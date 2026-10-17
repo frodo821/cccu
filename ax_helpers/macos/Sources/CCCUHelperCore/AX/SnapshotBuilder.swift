@@ -15,6 +15,7 @@ public struct SnapshotOutput {
     public let text: String
     public let refs: [String: AXElement]
     public let truncated: Bool
+    public var paths: [String: RefPath] = [:]   // ref → ルートからの経路 (再描画で死んだノードの引き直し用)
     public var matches: Int = 0   // ui.find での一致数 (祖先の ref は含まない)
     public var truncatedBy: String? = nil   // "nodes" (maxNodes 到達) か "depth" (maxDepth で子孫を省いた)
 }
@@ -32,6 +33,8 @@ final class Node {
     var rawTitle: String?     // 静的テキストの元の文字列 (前後の空白を保持)。隣の断片と結合するときの区切り判定用
     var ref: String?
     weak var parent: Node?    // 構造クエリ (Query) 用。walk で設定する
+    var rawPath: [Int] = []   // ルートからの子インデックス (AX の生の子配列での位置)
+    var rawRole = ""          // 正規化前の AX ロール
     var nextSibling: Node? {
         guard let p = parent, let idx = p.children.firstIndex(where: { $0 === self }), idx + 1 < p.children.count else { return nil }
         return p.children[idx + 1]
@@ -72,7 +75,7 @@ public enum SnapshotBuilder {
         var truncated = false
         var depthCut = false   // maxDepth で切った (maxNodes ではなく)
 
-        func walk(_ el: AXElement, depth: Int) -> Node? {
+        func walk(_ el: AXElement, depth: Int, path: [Int] = []) -> Node? {
             if count >= options.maxNodes { truncated = true; return nil }
             guard let rawRole = el.role else { return nil }
             let role = normalizeRole(rawRole, subrole: el.subrole)
@@ -80,12 +83,14 @@ public enum SnapshotBuilder {
             count += 1
 
             let node = makeNode(el, role: role, options: options)
+            node.rawPath = path
+            node.rawRole = rawRole
             // 名前のない静的テキスト (アイコンフォントのグリフ、空文字列) は情報がないので出さない
             if role == "text", node.title == nil, node.value == nil, !node.actionable { return nil }
 
             if depth < options.maxDepth && !leafRoles.contains(role) && !(options.skipWebContent && role == "webarea") {
-                for child in el.children {
-                    if let n = walk(child, depth: depth + 1) { n.parent = node; node.children.append(n) }
+                for (i, child) in el.children.enumerated() {
+                    if let n = walk(child, depth: depth + 1, path: path + [i]) { n.parent = node; node.children.append(n) }
                     if count >= options.maxNodes { truncated = true; break }
                 }
             } else if depth >= options.maxDepth && !el.children.isEmpty {
@@ -116,9 +121,12 @@ public enum SnapshotBuilder {
         var refs: [String: AXElement] = [:]
         var lines: [String] = []
         var refCounter = 0
-        for n in forest { render(n, indent: 0, lines: &lines, refs: &refs, counter: &refCounter, options: options) }
-        return SnapshotOutput(text: lines.joined(separator: "\n"), refs: refs, truncated: truncated, matches: matchCount,
-                              truncatedBy: truncated ? (depthCut && count < options.maxNodes ? "depth" : "nodes") : nil)
+        var paths: [String: RefPath] = [:]
+        for n in forest { render(n, indent: 0, lines: &lines, refs: &refs, paths: &paths, root: root, counter: &refCounter, options: options) }
+        var out = SnapshotOutput(text: lines.joined(separator: "\n"), refs: refs, truncated: truncated, matches: matchCount,
+                                 truncatedBy: truncated ? (depthCut && count < options.maxNodes ? "depth" : "nodes") : nil)
+        out.paths = paths
+        return out
     }
 
     /// 一致ノードに印を付け、一致数を返す。一致数は末端優先: 子孫にも一致があれば親 (ブロック文字列で一致した group など) は数えない。
@@ -280,7 +288,7 @@ public enum SnapshotBuilder {
         return node.children.isEmpty ? nil : node
     }
 
-    static func render(_ node: Node, indent: Int, lines: inout [String], refs: inout [String: AXElement], counter: inout Int, options: SnapshotOptions) {
+    static func render(_ node: Node, indent: Int, lines: inout [String], refs: inout [String: AXElement], paths: inout [String: RefPath], root: AXElement, counter: inout Int, options: SnapshotOptions) {
         var line = String(repeating: "  ", count: indent) + "- " + node.role
         if let t = node.title { line += " " + quote(t, limit: node.role == "text" ? options.valueLimit : max(options.valueLimit, 120)) }   // textLimit は本文用。要素名 (リンク名など) は 120 未満に切らない
         if node.actionable || node.matched {
@@ -288,6 +296,7 @@ public enum SnapshotBuilder {
             let ref = "e\(counter)"
             node.ref = ref
             refs[ref] = node.element
+            paths[ref] = RefPath(root: root, indices: node.rawPath, role: node.rawRole, title: node.title)
             line += " [ref=\(ref)]"
         }
         for s in node.states { line += " [\(s)]" }
@@ -305,7 +314,7 @@ public enum SnapshotBuilder {
             else { line += ": \(v)" }
         }
         lines.append(line)
-        for c in node.children { render(c, indent: indent + 1, lines: &lines, refs: &refs, counter: &counter, options: options) }
+        for c in node.children { render(c, indent: indent + 1, lines: &lines, refs: &refs, paths: &paths, root: root, counter: &counter, options: options) }
     }
 
     static func quote(_ s: String, limit: Int) -> String {

@@ -47,12 +47,12 @@ public enum ChangeReport {
             } else { stable = 0 }
             last = key
         }
-        let id = RefTable.shared.register(after.refs)
+        let id = RefTable.shared.register(after.refs, paths: after.paths)
         var changes: JSONObject = ["snapshot": id, "refCount": after.refs.count, "waitMs": Int(wait * 1000)]
         if normalize(after.text) == beforeKey {
             changes["changed"] = false
         } else {
-            let (added, removed) = diff(before: before, after: after.text)
+            let (added, removed) = dropTextRechunking(diff(before: before, after: after.text))
             let afterLines = after.text.split(separator: "\n").count
             // 差分が全体より長いか、半分以上が新しい行 (ステップ遷移) なら全体を返す。フィードバックの挿入やスクロールでは差分の方が短い
             let tooBig = added.count + removed.count > afterLines || Double(added.count) > Double(max(afterLines, 1)) * fullThresholdRatio
@@ -132,6 +132,22 @@ public enum ChangeReport {
         for k in ak { acounts[k, default: 0] += 1 }
         var removed: [String] = []
         for (l, k) in zip(b, bk) { if let n = acounts[k], n > 0 { acounts[k] = n - 1 } else { removed.append(l) } }
+        return (added, removed)
+    }
+
+    /// スクロールで画面外の静的テキストが結合・分割されただけの行を落とす: 追加された text の内容が、削除された text 群を
+    /// 連結したものに含まれる (またはその逆) なら両方とも雑音
+    static func dropTextRechunking(_ d: (added: [String], removed: [String])) -> (added: [String], removed: [String]) {
+        func textContent(_ l: String) -> String? {
+            let t = l.trimmingCharacters(in: .whitespaces)
+            guard t.hasPrefix("- text \""), let end = t.lastIndex(of: "\"") , t.count > 9 else { return nil }
+            return String(t[t.index(t.startIndex, offsetBy: 8)..<end]).replacingOccurrences(of: " ", with: "")
+        }
+        let addedTexts = d.added.compactMap(textContent), removedTexts = d.removed.compactMap(textContent)
+        guard !addedTexts.isEmpty, !removedTexts.isEmpty else { return d }
+        let addedJoined = addedTexts.joined(), removedJoined = removedTexts.joined()
+        let added = d.added.filter { l in textContent(l).map { !removedJoined.contains($0) } ?? true }
+        let removed = d.removed.filter { l in textContent(l).map { !addedJoined.contains($0) } ?? true }
         return (added, removed)
     }
 

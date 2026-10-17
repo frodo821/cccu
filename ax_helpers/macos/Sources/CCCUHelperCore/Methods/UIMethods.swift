@@ -75,7 +75,7 @@ private func clickBody(_ p: Params) throws -> JSONObject {
         let count = p.optInt("count") ?? 1
         let mods = p.modifiers()
         let fg = wantsForeground(p.optBool("foreground") ?? false)
-        if let el = try p.optRef() {
+        if var el = try p.optRef() {
             let plain = (button ?? "left") == "left" && count == 1 && mods.isEmpty
             if plain, !el.isWebContent, el.actionNames().contains(kAXPressAction) {
                 // AXPress は多くの場合アプリが背面のままでも動く。ただしキーウィンドウに依存する操作 (書式の切り替えなど) は
@@ -86,11 +86,20 @@ private func clickBody(_ p: Params) throws -> JSONObject {
             let refName = (try? p.object("ref")).map { "\((try? $0.string("snapshot")) ?? "?")/\((try? $0.string("ref")) ?? "?")" } ?? "?"
             let frame0 = el.frame
             guard var c = el.ensureVisibleCenter() else { throw HelperError(.unsupported, "element has no frame to click") }
-            let frame1 = el.frame
+            var frame1 = el.frame
+            var reresolved = false
+            // スクロールしても 1x1 の仮 frame のままなら、保持している AX ノードは再描画で死んでいる可能性が高い。
+            // スナップショット時の経路で引き直し、実寸の frame を持つ要素が得られればそれを押す
+            if let f = frame1, f.width <= 2 || f.height <= 2, let path = p.refPath(), let fresh = path.resolve(),
+               !CFEqual(fresh.raw, el.raw), let ff = fresh.frame, ff.width > 2, ff.height > 2 {
+                el = fresh; reresolved = true
+                c = el.ensureVisibleCenter() ?? CGPoint(x: ff.midX, y: ff.midY)
+                frame1 = el.frame
+            }
             let pointer = PointerMode(rawValue: p.optString("pointer") ?? "") ?? pointerMode
             let force = p.optBool("force") ?? false
             var retried = false
-            var diag: [String: Any] = ["ref": refName, "role": el.role ?? "?", "name": el.title ?? el.descriptionText ?? "", "frame0": frame0 ?? "nil", "frame1": frame1 ?? "nil", "center": c]
+            var diag: [String: Any] = ["reresolved": reresolved, "ref": refName, "role": el.role ?? "?", "name": el.title ?? el.descriptionText ?? "", "frame0": frame0 ?? "nil", "frame1": frame1 ?? "nil", "center": c]
             // 実マウスクリックはウィンドウが前面にある必要がある。終わったら元のアプリへ戻す
             try withForeground(el.pid, window: el.window) {
                 // 前面に出した状態で、座標に実際にあるものを確認する。Chrome の AX の frame はスクロールやレイアウト変更より
@@ -152,7 +161,8 @@ private func clickBody(_ p: Params) throws -> JSONObject {
                 }
             }
             Diag.log("click", diag)
-            let base = activationPolicy == .foreground || Session.isActive ? "cg" : "cg+restore"
+            var base = activationPolicy == .foreground || Session.isActive ? "cg" : "cg+restore"
+            if reresolved { base += " (the ref pointed at a re-rendered node; re-resolved it by its position in the tree)" }
             return ["method": retried ? base + " (element moved after scrolling; pressed again at its new position)" : base] as JSONObject
         }
         guard let pt = try p.optPoint("point") else { throw HelperError.invalidParams("ref or point required") }

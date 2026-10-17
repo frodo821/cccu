@@ -302,6 +302,11 @@ extension Params {
     func optRef(_ key: String = "ref") throws -> AXElement? {
         raw[key] == nil ? nil : try ref(key)
     }
+    /// ref の経路 (再描画で死んだノードの引き直し用)
+    func refPath(_ key: String = "ref") -> RefPath? {
+        guard let r = try? object(key), let s = try? r.string("snapshot"), let e = try? r.string("ref") else { return nil }
+        return RefTable.shared.path(snapshot: s, ref: e)
+    }
     func point(_ key: String) throws -> CGPoint {
         let p = try object(key)
         guard let x = p.raw["x"] as? NSNumber, let y = p.raw["y"] as? NSNumber else {
@@ -375,8 +380,9 @@ extension Params {
 }
 
 func snapshotResult(_ out: SnapshotOutput) -> JSONObject {
-    let id = RefTable.shared.register(out.refs)
+    let id = RefTable.shared.register(out.refs, paths: out.paths)
     var r: JSONObject = ["snapshot": id, "text": out.text, "refCount": out.refs.count, "truncated": out.truncated, "matches": out.matches]
+    _ = id
     if let by = out.truncatedBy { r["truncatedBy"] = by }
     return r
 }
