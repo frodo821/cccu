@@ -137,9 +137,14 @@ private func clickBody(_ p: Params) throws -> JSONObject {
                 let outside = after.map { !$0.insetBy(dx: 3, dy: 3).contains(pressed) } ?? false
                 let hitUnrelated = elementAt(pressed).map { !$0.isRelated(to: el) } ?? false
                 diag["moved"] = moved
-                if let a = after, a.width > 2, a.height > 2, moved, outside || hitUnrelated, count == 1 {
+                // 押し直すのは、1 回目が効いていない証拠が揃ったときだけ: 要素にフォーカスが移っておらず、要素がまだ有効で名前も変わらず、
+                // 新しい中心にあるものが (frame の包含ではなく) 親子関係で同じ要素。1 回目でページが組み替わり、同じ位置に別のボタン
+                // (「トレーニングを終了」など) が出たケースで 2 回目がそれを押してしまったことがある
+                let focusedNow = diag["focusedAfter"] as? Bool ?? false
+                let sameState = el.isEnabled && (el.title ?? el.descriptionText ?? "") == (diag["name"] as? String ?? "")
+                if let a = after, a.width > 2, a.height > 2, moved, outside || hitUnrelated, count == 1, !focusedNow, sameState {
                     let c2 = CGPoint(x: a.midX, y: a.midY)
-                    if let h = elementAt(c2), h.isRelated(to: el) {
+                    if let h = elementAt(c2), h.isStrictlyRelated(to: el) {
                         try Input.click(at: c2, size: a.size, button: button, count: 1, modifiers: mods, mode: pointer)
                         diag["retried"] = c2
                         retried = true

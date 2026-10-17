@@ -2,7 +2,7 @@ import Foundation
 import ApplicationServices
 import CoreGraphics
 
-public let protocolVersion = "1.16"
+public let protocolVersion = "1.17"
 public let helperVersion = "0.1.0"
 
 public enum Trust {

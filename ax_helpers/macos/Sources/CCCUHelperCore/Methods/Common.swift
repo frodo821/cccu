@@ -129,15 +129,20 @@ func elementAt(_ p: CGPoint) -> AXElement? {
 extension AXElement {
     /// この要素と other が同じか、どちらかがもう一方の祖先か (ヒットテストは内側のテキストやアイコンを返すことがある)
     func isRelated(to other: AXElement, maxDepth: Int = 12) -> Bool {
+        if isStrictlyRelated(to: other, maxDepth: maxDepth) { return true }
+        // ブラウザ UI (タブ、ツールバー) ではヒットテストが親子関係の辿れない無名の group を返すことがある。
+        // 相手の frame がこの要素の frame に収まっていれば、自分の一部 (装飾や内側のコンテナ) とみなす。モーダルのスクリムは要素より大きいので誤判定しない
+        if let f = frame, let of = other.frame, f.width > 2, f.height > 2, of.width > 0, of.height > 0,
+           f.insetBy(dx: -2, dy: -2).contains(of) { return true }
+        return false
+    }
+    /// 同一か、親子関係 (祖先・子孫) にあるか。frame の包含は見ない
+    func isStrictlyRelated(to other: AXElement, maxDepth: Int = 12) -> Bool {
         if CFEqual(raw, other.raw) { return true }
         var cur: AXElement? = other
         for _ in 0..<maxDepth { guard let c = cur?.element(kAXParentAttribute) else { break }; if CFEqual(c.raw, raw) { return true }; cur = c }
         cur = self
         for _ in 0..<maxDepth { guard let c = cur?.element(kAXParentAttribute) else { break }; if CFEqual(c.raw, other.raw) { return true }; cur = c }
-        // ブラウザ UI (タブ、ツールバー) ではヒットテストが親子関係の辿れない無名の group を返すことがある。
-        // 相手の frame がこの要素の frame に収まっていれば、自分の一部 (装飾や内側のコンテナ) とみなす。モーダルのスクリムは要素より大きいので誤判定しない
-        if let f = frame, let of = other.frame, f.width > 2, f.height > 2, of.width > 0, of.height > 0,
-           f.insetBy(dx: -2, dy: -2).contains(of) { return true }
         return false
     }
     /// 最寄りのダイアログ/シート (モーダル) の要素
