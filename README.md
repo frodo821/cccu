@@ -151,7 +151,8 @@ things keep that from happening:
   your keyboard and mouse are blocked until `cu_session end`, the declared time runs out, or you press Escape three times
   quickly. The agent is told how many of your inputs were blocked. While a session runs, a small red banner at the
   bottom right of the screen shows which app the agent is working in, how long the session may still last, that your
-  input is blocked, and that Escape three times stops it (`CCCU_SESSION_OVERLAY=off` hides it).
+  input is blocked, and that Escape three times stops it (`CCCU_SESSION_OVERLAY=off` hides it). The pointer stays
+  where the agent put it until the session ends.
 - Outside a session, each real click or key press blocks your input only for that instant (`CCCU_USER_GUARD=block`,
   the default). `CCCU_USER_GUARD=wait` waits for your input to pause instead of blocking it, and `off` disables both.
 

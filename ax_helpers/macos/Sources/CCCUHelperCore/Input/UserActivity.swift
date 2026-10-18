@@ -87,11 +87,15 @@ public enum UserActivity {
     static func beginBlocking() {
         ensureTap()
         lock.lock(); blocking = true; blockedCount = 0; lock.unlock()
+        // イベントを捨てるだけではカーソルは動き続ける (描画位置は WindowServer がイベント配送より前に更新する)。
+        // 物理マウスとカーソルを切り離して、見た目にも止める。合成イベントの位置指定と warp は効く
+        CGAssociateMouseAndMouseCursorPosition(0)
     }
     /// 遮断を解き、捨てたイベント数を返す
     @discardableResult
     static func endBlocking() -> Int {
         lock.lock(); blocking = false; let n = blockedCount; blockedCount = 0; lock.unlock()
+        CGAssociateMouseAndMouseCursorPosition(1)
         return n
     }
 
