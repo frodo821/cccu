@@ -41,13 +41,17 @@ public enum UserActivity {
     private static var tap: CFMachPort?
     static var escapes: [Date] = []
     private static var tapThread: Thread?
+    /// 遮断中にカーソルを留める位置。合成のマウスイベントが通るたびに更新する
+    private static var pinned: CGPoint?
+    private static let moveTypes: Set<CGEventType> = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
 
     /// 遮断用のイベントタップを専用スレッドで立てる (メインスレッドは操作中 sleep するので、そこでは捌けない)
     private static func ensureTap() {
         lock.lock(); defer { lock.unlock() }
         if tap != nil { return }
         let mask: CGEventMask = types.reduce(0) { $0 | (1 << $1.rawValue) } | (1 << CGEventType.otherMouseUp.rawValue) | (1 << CGEventType.otherMouseDragged.rawValue)
-        guard let port = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
+        // HID 層で捨てる: セッション層ではイベントを捨ててもカーソルの描画位置は既に更新されていて、カーソルがユーザーのマウスに追従して見える
+        guard let port = CGEvent.tapCreate(tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
                                            callback: { _, type, event, _ in
                                                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                                                    if let t = UserActivity.tap { CGEvent.tapEnable(tap: t, enable: true) }
@@ -55,7 +59,14 @@ public enum UserActivity {
                                                }
                                                // 合成イベント (セッション状態のソース) は通し、ハードウェア由来 (HID 状態) だけを捨てる
                                                let hid = event.getIntegerValueField(.eventSourceStateID) == Int64(CGEventSourceStateID.hidSystemState.rawValue)
-                                               UserActivity.lock.lock(); let drop = UserActivity.blocking && hid; if drop { UserActivity.blockedCount += 1 }; UserActivity.lock.unlock()
+                                               UserActivity.lock.lock()
+                                               let drop = UserActivity.blocking && hid
+                                               if drop { UserActivity.blockedCount += 1 }
+                                               if !hid, UserActivity.moveTypes.contains(type) || type == .leftMouseDown { UserActivity.pinned = event.location }
+                                               let pin = UserActivity.pinned
+                                               UserActivity.lock.unlock()
+                                               // 捨てるだけではカーソルの描画位置が物理マウスに追従することがあるので、エージェントが置いた位置へ戻す
+                                               if drop, UserActivity.moveTypes.contains(type), let pt = pin { CGWarpMouseCursorPosition(pt) }
                                                // 逃げ道: 遮断中にユーザーが Escape を 1.5 秒以内に 3 回押したら、セッションを終えて遮断を解く
                                                if drop, type == .keyDown, event.getIntegerValueField(.keyboardEventKeycode) == 53 {
                                                    let now = Date()
@@ -86,16 +97,12 @@ public enum UserActivity {
     /// セッション (session.begin) の間ずっと遮断する
     static func beginBlocking() {
         ensureTap()
-        lock.lock(); blocking = true; blockedCount = 0; lock.unlock()
-        // イベントを捨てるだけではカーソルは動き続ける (描画位置は WindowServer がイベント配送より前に更新する)。
-        // 物理マウスとカーソルを切り離して、見た目にも止める。合成イベントの位置指定と warp は効く
-        CGAssociateMouseAndMouseCursorPosition(0)
+        lock.lock(); blocking = true; blockedCount = 0; pinned = CGEvent(source: nil)?.location; lock.unlock()
     }
     /// 遮断を解き、捨てたイベント数を返す
     @discardableResult
     static func endBlocking() -> Int {
         lock.lock(); blocking = false; let n = blockedCount; blockedCount = 0; lock.unlock()
-        CGAssociateMouseAndMouseCursorPosition(1)
         return n
     }
 
@@ -116,7 +123,7 @@ public enum UserActivity {
             ensureTap()
             if mode != .block { return try guarded(body) }   // タップが作れなかった
             try waitUntil(minIdle: 0.05)   // 押下中・打鍵の途中なら離されるまで待つ
-            lock.lock(); blocking = true; blockedCount = 0; lock.unlock()
+            lock.lock(); blocking = true; blockedCount = 0; pinned = CGEvent(source: nil)?.location; lock.unlock()
             defer {
                 lock.lock(); blocking = false; let n = blockedCount; lock.unlock()
                 if n > 0 { note("blocked \(n) user input event(s) (keyboard/mouse) during this action; the user may have been interrupted") }
