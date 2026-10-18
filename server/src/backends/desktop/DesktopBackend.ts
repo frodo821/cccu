@@ -161,7 +161,7 @@ export class DesktopBackend implements Backend {
     const r = await (await this.helper()).call("input.type", { ref, text, ...opts });
     return DesktopBackend.withWarning(r.method, r);
   }
-  async inputSession(action: "begin" | "extend" | "end" | "status", target?: string, opts: { blockInput?: boolean; maxSeconds?: number } = {}): Promise<string> {
+  async inputSession(action: "begin" | "extend" | "end" | "status", target?: string, opts: { blockInput?: boolean; maxSeconds?: number; overlay?: boolean } = {}): Promise<string> {
     const h = await this.helper();
     if (!h.has("session.begin")) throw new HelperError("UNSUPPORTED", h.running ? "helper does not support sessions (rebuild ax_helpers/macos)" : "helper is not running");
     switch (action) {
@@ -170,8 +170,8 @@ export class DesktopBackend implements Backend {
         if (opts.maxSeconds === undefined) throw new HelperError("INVALID_PARAMS", "begin needs maxSeconds: declare how long the session may last (1..3600)");
         const t = await this.resolveTarget(target);
         if (t.kind !== "app" && t.kind !== "window") throw new HelperError("UNSUPPORTED", `cannot start a session on ${target}`);
-        const r = await h.call("session.begin", { pid: t.pid, blockInput: opts.blockInput ?? true, maxSeconds: opts.maxSeconds });
-        return `session started on pid ${r.pid}: app kept in front, user input ${r.blocking ? "blocked" : "not blocked"}, ends automatically after ${r.maxSeconds}s or when the user presses Escape three times. Call cu_session end when done.`;
+        const r = await h.call("session.begin", { pid: t.pid, blockInput: opts.blockInput ?? true, maxSeconds: opts.maxSeconds, ...(opts.overlay === undefined ? {} : { overlay: opts.overlay }) });
+        return `session started on pid ${r.pid}: app kept in front, user input ${r.blocking ? "blocked" : "not blocked"}, ends automatically after ${r.maxSeconds}s or when the user presses Escape three times${r.overlay ? "; the user sees a banner with the remaining time" : ""}. Call cu_session end when done.`;
       }
       case "extend": {
         if (opts.maxSeconds === undefined) throw new HelperError("INVALID_PARAMS", "extend needs maxSeconds");

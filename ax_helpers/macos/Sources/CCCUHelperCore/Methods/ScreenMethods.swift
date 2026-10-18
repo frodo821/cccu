@@ -29,13 +29,13 @@ public func registerScreenMethods(_ d: Dispatcher) {
                 w = found
             }
             guard w.windowNumber != 0, let f = w.frame else { throw HelperError(.unsupported, "window has no capturable id") }
-            guard let img = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution]) else {
+            guard let img = SessionOverlay.withHidden({ CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution]) }) else {
                 throw HelperError(.axError, "CGWindowListCreateImage failed")
             }
             image = img; frame = f
         } else {
             let displayID = p.optInt("display").map { CGDirectDisplayID($0) } ?? CGMainDisplayID()
-            guard let img = CGDisplayCreateImage(displayID) else { throw HelperError.notFound("display") }
+            guard let img = SessionOverlay.withHidden({ CGDisplayCreateImage(displayID) }) else { throw HelperError.notFound("display") }
             image = img; frame = CGDisplayBounds(displayID)
         }
         var scaled = downscale(image, maxWidth: maxWidth)

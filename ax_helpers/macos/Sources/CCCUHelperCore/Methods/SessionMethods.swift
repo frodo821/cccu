@@ -21,19 +21,23 @@ public enum Session {
         return true
     }
 
-    static func begin(pid p: pid_t, block: Bool, maxSeconds: TimeInterval) -> JSONObject {
+    static func begin(pid p: pid_t, block: Bool, maxSeconds: TimeInterval, overlay: Bool = true) -> JSONObject {
         if pid != nil { _ = end(reason: nil) }
         previous = frontmostPid()
         pid = p; blocking = block; startedAt = Date(); deadline = Date().addingTimeInterval(maxSeconds); endedReason = nil
         activate(p)
         if block { UserActivity.beginBlocking() }
-        return ["pid": Int(p), "previousPid": previous.map { Int($0) } as Any, "blocking": block, "maxSeconds": Int(maxSeconds)]
+        // ユーザーへの表示: 操作中であること、入力が遮断されていること、残り時間、Escape 3 回で止められること
+        let shown = overlay && SessionOverlay.enabled
+        if shown { SessionOverlay.show() }
+        return ["pid": Int(p), "previousPid": previous.map { Int($0) } as Any, "blocking": block, "maxSeconds": Int(maxSeconds), "overlay": shown]
     }
 
     /// セッションを終える。reason があれば次の応答に警告として付ける。戻り値は遮断した入力の数など
     @discardableResult
     static func end(reason: String?) -> JSONObject {
         guard let p = pid else { return ["active": false] }
+        SessionOverlay.hide()
         let blocked = blocking ? UserActivity.endBlocking() : 0
         let dur = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         if let prev = previous, prev != p, activationPolicy != .foreground {
@@ -72,7 +76,7 @@ public func registerSessionMethods(_ d: Dispatcher) {
         // 上限時間は宣言必須: エージェントが止まったときにユーザーが閉じ込められないように
         let max = TimeInterval(try p.int("maxSeconds"))
         guard max > 0, max <= 3600 else { throw HelperError.invalidParams("maxSeconds must be 1...3600") }
-        return Session.begin(pid: pid, block: block, maxSeconds: max)
+        return Session.begin(pid: pid, block: block, maxSeconds: max, overlay: p.optBool("overlay") ?? true)
     }
     d.register("session.extend") { p in
         guard Session.isActive else { throw HelperError(.notFound, "no active session") }

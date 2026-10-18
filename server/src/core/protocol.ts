@@ -82,7 +82,7 @@ export interface Methods {
   };
   "input.type": { params: { ref?: Ref; pid?: number; text: string; clear?: boolean; submit?: boolean; method?: "auto" | "keys" | "ax"; foreground?: boolean; report?: ReportMode; textLimit?: number; reportWaitMs?: number }; result: { method: string; warning?: string; changes?: Changes } };
   "input.key": { params: { key: string; modifiers?: Modifier[]; pid?: number; foreground?: boolean; report?: ReportMode; textLimit?: number; reportWaitMs?: number }; result: { method: string; item?: string; warning?: string; changes?: Changes } };
-  "session.begin": { params: { pid?: number; bundleId?: string; blockInput?: boolean; maxSeconds: number }; result: { pid: number; previousPid?: number; blocking: boolean; maxSeconds: number; warning?: string } };
+  "session.begin": { params: { pid?: number; bundleId?: string; blockInput?: boolean; maxSeconds: number; overlay?: boolean }; result: { pid: number; previousPid?: number; blocking: boolean; maxSeconds: number; overlay?: boolean; warning?: string } };
   "session.extend": { params: { maxSeconds: number }; result: SessionStatus };
   "session.end": { params: Record<string, never>; result: { active: false; blockedInputs?: number; seconds?: number; warning?: string } };
   "session.status": { params: Record<string, never>; result: SessionStatus };

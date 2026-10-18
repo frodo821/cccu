@@ -181,12 +181,12 @@ export function registerTools(server: McpServer, ctx: ToolContext) {
     }));
 
   server.registerTool("cu_session",
-    { description: "Desktop: declare the start and end of a run of actions on one app. begin keeps the app in front and blocks the user's keyboard and mouse (synthetic input still works) so your actions and the user's cannot interleave; end returns focus to the previous app and unblocks. begin requires maxSeconds (1..3600): the session ends by itself after that, or when the user presses Escape three times quickly. Use it for multi-step work on one app; extend it when you need more time; always end it when done.",
-      inputSchema: { action: z.enum(["begin", "extend", "end", "status"]), target: targetArg.optional().describe("begin: the app to work in (app:<pid> or bundle id)"), maxSeconds: z.number().int().min(1).max(3600).optional().describe("begin (required) / extend: how long the session may last"), blockInput: z.boolean().optional().describe("begin: block the user's input (default true)") } },
-    ({ action, target, maxSeconds, blockInput }) => run(async () => {
+    { description: "Desktop: declare the start and end of a run of actions on one app. begin keeps the app in front and blocks the user's keyboard and mouse (synthetic input still works) so your actions and the user's cannot interleave; end returns focus to the previous app and unblocks. begin requires maxSeconds (1..3600): the session ends by itself after that, or when the user presses Escape three times quickly. While it runs the user sees a small banner (app name, remaining time, how to stop). Use it for multi-step work on one app; extend it when you need more time; always end it when done.",
+      inputSchema: { action: z.enum(["begin", "extend", "end", "status"]), target: targetArg.optional().describe("begin: the app to work in (app:<pid> or bundle id)"), maxSeconds: z.number().int().min(1).max(3600).optional().describe("begin (required) / extend: how long the session may last"), blockInput: z.boolean().optional().describe("begin: block the user's input (default true)"), overlay: z.boolean().optional().describe("begin: show the on-screen banner to the user (default true)") } },
+    ({ action, target, maxSeconds, blockInput, overlay }) => run(async () => {
       const b = target ? byTarget(target) : ctx.backends[0];
       if (!b.inputSession) throw new HelperError("UNSUPPORTED", "sessions are only available for desktop apps");
-      return text(await b.inputSession(action, target, { maxSeconds, blockInput }));
+      return text(await b.inputSession(action, target, { maxSeconds, blockInput, overlay }));
     }));
 
   server.registerTool("cu_screenshot",

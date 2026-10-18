@@ -316,3 +316,16 @@ final class RefPathAndNoiseTests: XCTestCase {
         XCTAssertEqual(ChangeReport.dropTextRechunking(d2).added.count, 1)
     }
 }
+
+final class SessionOverlayTests: XCTestCase {
+    func testOverlayTextMentionsAppRemainingTimeAndEscape() {
+        let t = SessionOverlay.text(appName: "Google Chrome", remainingSeconds: 1500, blocking: true)
+        XCTAssertTrue(t.contains("Google Chrome"))
+        XCTAssertTrue(t.contains("25:00"))
+        XCTAssertTrue(t.contains("遮断"))
+        XCTAssertTrue(t.contains("Esc"))
+        XCTAssertFalse(SessionOverlay.text(appName: "A", remainingSeconds: 5, blocking: false).contains("遮断"))
+        XCTAssertTrue(SessionOverlay.text(appName: "A", remainingSeconds: 3600, blocking: false).contains("1:00:00"))
+        XCTAssertTrue(SessionOverlay.text(appName: "A", remainingSeconds: -3, blocking: false).contains("0:00"))
+    }
+}

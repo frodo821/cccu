@@ -14,7 +14,7 @@ Workflow (always in this order):
 Working alongside the user
 - For a run of actions on one app (filling a form, working through a page), bracket it with `cu_session begin target=<app> maxSeconds=<N>` and `cu_session end`. During the session the app stays in front and the user's keyboard and mouse are blocked, so their input cannot land in your target or move the cursor you are using. Declare a realistic maxSeconds (the session ends by itself after it; `cu_session extend` adds time) and always end the session when done, including after errors.
 - Without a session, each real click or key press briefly activates the app, blocks user input for that instant, and returns focus. If a result carries `WARNING: ... user input ...`, the user was typing or moving the mouse at that moment: verify the result before continuing. `BUSY` means the user is actively using the machine; wait a few seconds and retry.
-- The user can end a session at any time by pressing Escape three times; the next result tells you so.
+- The user can end a session at any time by pressing Escape three times; the next result tells you so. During a session the user sees a small banner at the bottom right of the screen (app name, remaining time, how to stop), so you do not need to announce the session yourself; pass `overlay: false` only if the user asked for no banner.
 
 Browser notes
 - Two ways to work with Chrome. Check `cu_targets` first: its first line says whether a DevTools (CDP) Chrome is connected.

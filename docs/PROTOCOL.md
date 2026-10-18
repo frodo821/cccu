@@ -108,7 +108,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 |--------|--------|--------|
 | `input.type` | `{ref?: Ref, pid?: int, text: string, clear?: boolean, submit?: boolean, method?: "auto"\|"keys"\|"ax"}` | `{method: string}` — ref 省略時はフォーカス中の要素。`auto` は AXSelectedText 挿入 → AXValue 置換 → 打鍵 の順。`submit` 時の既定は `keys` (AX で挿入した文字列は Chrome のアドレスバーなどで「ユーザー入力」扱いにならず Enter が効かないため)。打鍵が落ちたら AX で入れ直す (v1.3) |
 | `input.key` | `{key: string, modifiers?: Modifier[], pid?: int}` | `{}` — `key` は W3C `KeyboardEvent.key` 名。`pid` 指定時はそのアプリを前面にしてから送る |
-| `session.begin` | `{pid?: int, bundleId?: string, blockInput?: boolean, maxSeconds: int}` | `{pid, previousPid?, blocking, maxSeconds}` — 操作セッション開始: 対象を前面にし、終了まで保つ。`blockInput` (既定 true) でユーザーの実入力を遮断。`maxSeconds` (1–3600) は必須で、超えると自動終了。ユーザーが Escape を 1.5 秒以内に 3 回押しても終了し、次の応答に `warning` が付く (v1.10) |
+| `session.begin` | `{pid?: int, bundleId?: string, blockInput?: boolean, maxSeconds: int, overlay?: boolean}` | `{pid, previousPid?, blocking, maxSeconds, overlay}` — 操作セッション開始: 対象を前面にし、終了まで保つ。`blockInput` (既定 true) でユーザーの実入力を遮断。`maxSeconds` (1–3600) は必須で、超えると自動終了。ユーザーが Escape を 1.5 秒以内に 3 回押しても終了し、次の応答に `warning` が付く (v1.10)。`overlay` (既定 true) でセッション中、画面右下にユーザー向けの表示 (操作中のアプリ名・残り時間・遮断中・Esc 3 回で中断) を出す (v1.20) |
 | `session.extend` | `{maxSeconds: int}` | `{active, pid, blocking, remainingSeconds}` — 期限を今から `maxSeconds` 後に延ばす (v1.10) |
 | `session.end` | `{}` | `{active: false, blockedInputs, seconds}` — 終了: 遮断を解き、開始前の最前面アプリへ戻す (ユーザーが自分で切り替えていればそのまま) (v1.10) |
 | `session.status` | `{}` | `{active, pid?, blocking?, remainingSeconds?}` (v1.10) |
@@ -161,6 +161,8 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 操作系メソッドの結果に `warning: string` が付くことがある (ユーザー入力の遮断・重なり、セッションの終了)。クライアントは結果を確かめ直すべきである。
 
+セッション中はユーザーに向けて画面右下に小さな表示を出す (v1.20): 「cccu が <アプリ> を操作中 · 残り m:ss · キーボード・マウスは遮断中 · Esc を 3 回押すと中断」。クリックは透過し、キーウィンドウにならず、`screen.capture` の間は隠れる。表示の毎秒更新が期限切れの検出も兼ねるので、クライアントが要求を送らなくなっても `maxSeconds` で遮断が解ける。`CCCU_SESSION_OVERLAY=off` で無効 (`sys.hello` の `sessionOverlay`)。
+
 ## 6. スナップショット記法
 
 ```
@@ -201,6 +203,7 @@ FindQuery = { "role"?: string, "title"?: string, "value"?: string, "exact"?: boo
 
 ## 9. 変更履歴
 
+- 1.20: セッション中のユーザー向けオーバーレイ (`session.begin` の `overlay`、結果の `overlay`、`sys.hello` の `sessionOverlay`、`CCCU_SESSION_OVERLAY=off`)。期限切れを要求を待たずに検出
 - 1.19: `ui.waitFor` の `maxDepth` は返すツリーにだけ適用し、検索は全深さで行う。`ui.click`: 座標に別の要素があるのに frame が変わっていない (前の操作でスクロールして frame が古い) ときは `AXScrollToVisible` で frame を更新してから押す / 押し直す
 - 1.18: ref ごとにスナップショット時の経路 (ルートからの子インデックスと role / 名前) を保持し、`ui.click` でスクロール後も 1x1 の仮 frame のまま (再描画で死んだノード) なら経路で引き直す (`method` に明記)。変化の報告から、スクロールによる静的テキストの結合・分割だけの行を除く
 - 1.17: `ui.click` の押し直し条件を厳格化: 要素にフォーカスが移っておらず、要素が有効で名前も不変、新しい中心のヒットテストが親子関係で同じ要素のときだけ (1 回目でページが組み替わって同じ位置に出た別のボタンを押さない)
